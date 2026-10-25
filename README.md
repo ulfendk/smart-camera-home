@@ -168,6 +168,8 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 
 ## Roadmap
 
+- Licence plates for vehicles arriving on a driveway camera, where the plate faces the camera (speed
+  cameras usually see cars from the side)
 
 ## License
 
