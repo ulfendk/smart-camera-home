@@ -40,7 +40,8 @@ async def main() -> None:
             link = HaLink(cfg, engine, alarm)
     presence = None
     from .presence import PresenceConfig, PresenceSimulator
-    if cfg.ha.enabled and alarm is not None and PresenceConfig(**cfg.presence).enabled:
+    pc = PresenceConfig(**cfg.presence)
+    if cfg.ha.enabled and alarm is not None and (pc.enabled or pc.lights):   # lights alone: learn and preview only
         presence = PresenceSimulator(cfg, db, alarm)
     watchdog = None
     from .power import PowerWatchdog

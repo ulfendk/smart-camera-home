@@ -276,7 +276,8 @@ class PresenceSimulator:
 
     @property
     def active(self) -> bool:
-        return self.alarm is not None and self.alarm.state in ("armed_away", "pending", "triggered")
+        """Switching lights: only when enabled (with lights alone it learns and previews)."""
+        return self.pc.enabled and self.alarm is not None and self.alarm.state in ("armed_away", "pending", "triggered")
 
     async def run(self) -> None:
         last_learn = 0.0

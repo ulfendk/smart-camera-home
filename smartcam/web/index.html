@@ -270,7 +270,7 @@ const SECTIONS = [
     ["alarm.siren_rounds", "Siren rounds", "number", 3],
   ]},
   {title: "Presence simulation", desc: "While the alarm is armed, the lights replay a real evening from when you were home (same weekday or weekend), shifted to today's sunset. Learned from Home Assistant's light history, kept growing in SmartCam.", presence: true, fields: [
-    ["presence.enabled", "Enabled", "bool", false],
+    ["presence.enabled", "Switch lights while armed", "bool", false, "off: only learns and previews (switch off another presence simulation first)"],
     ["presence.lights", "Lights", "list", [], "light entities to replay, comma-separated"],
     ["presence.jitter_minutes", "Shift the evening by up to (min)", "number", 20],
     ["presence.light_jitter_minutes", "Shift each switch by up to (min)", "number", 3],
