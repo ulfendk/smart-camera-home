@@ -149,7 +149,6 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 
 ## Roadmap
 
-- High-priority push notifications for alarms (time-sensitive / critical on iOS, high priority on Android)
 - Work alongside an existing Home Assistant alarm setup: input_boolean-based arming, presence
   simulation and keypads
 - Speed events for passing vehicles: estimated speed from a per-camera calibration (two road
