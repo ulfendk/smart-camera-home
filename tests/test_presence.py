@@ -77,3 +77,15 @@ def test_brightness_is_learned_and_replayed():
             "lights": {"light.kitchen": [[18 * 3600, 20 * 3600, 30]]}}]
     _, actions = plan(date(2026, 10, 27), lib, PC, (8 * 3600, 16.6 * 3600), CPH, random.Random(1))
     assert actions[0].brightness == 30 and actions[1].brightness is None
+
+
+def test_own_recordings_are_kept_and_read_back():
+    import tempfile
+    from pathlib import Path
+    from smartcam.db import Database
+    from smartcam.presence import Library
+    lib = Library(Database(Path(tempfile.mkdtemp()) / "t.db"))
+    lib.record(100.0, "light.kitchen", True, 40)
+    lib.record(200.0, "light.kitchen", False, None)
+    assert lib.recorded(0, 1000) == {"light.kitchen": [(100.0, True, 40), (200.0, False, None)]}
+    assert lib.recording_since() is None

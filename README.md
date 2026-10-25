@@ -3,9 +3,9 @@
 **The camera alarm for Home Assistant.** SmartCam records your cameras, detects people, and sends a
 Home Assistant push notification with a snapshot and clip when something looks suspicious, especially
 while nobody is home. Armed, it turns a serious event into an alarm: the cameras' red/blue warning
-lights flash. At night it can switch on a Dahua camera's own white light when a person is in view, and
-it restarts cameras whose stream has died. It runs on its own machine and lives in the Home Assistant
-sidebar.
+lights flash. At night a camera's Home Assistant lights go to full while a person is there, the lights
+replay a real evening while you're away, and cameras whose stream has died are restarted. It runs on
+its own machine and lives in the Home Assistant sidebar.
 
 **Website:** https://ulfendk.github.io/smart-camera-home/
 

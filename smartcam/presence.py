@@ -1,7 +1,9 @@
 """Presence simulation while the alarm is armed, replaying the home's own evenings.
 
-Learning: every few hours the light history Home Assistant still holds (the recorder keeps about ten
-days) is turned into "evenings" and kept in SmartCam's own database, so the library grows for as long
+Learning: SmartCam records the lights' state changes itself (live from Home Assistant, with brightness,
+which Home Assistant's recorder often does not keep); days before that come from the history Home
+Assistant still holds (on/off only, about ten days). Every few hours complete days are turned into
+"evenings" and kept in SmartCam's own database, so the library grows for as long
 as SmartCam runs. Only days when people were home count: with `ha.alarm_entity` set, a day whose
 evening was armed is skipped, so the simulation never learns from an empty house or from itself.
 Motion-sensor flicker is merged into visits and very short blips are dropped.
@@ -18,6 +20,7 @@ the lights the simulation switched on are switched off.
 import asyncio
 import json
 import logging
+import websockets
 import math
 import random
 import time
@@ -168,6 +171,25 @@ class Library:
         with db.lock, db.conn:
             db.conn.execute("create table if not exists presence_days (day text primary key, weekend integer, "
                             "sunrise real, sunset real, lights text)")
+            db.conn.execute("create table if not exists presence_changes (ts real, light text, on_ integer, pct integer)")
+            db.conn.execute("create index if not exists presence_changes_ts on presence_changes (ts)")
+
+    def record(self, ts: float, light: str, on: bool, pct: int | None) -> None:
+        with self.db.lock, self.db.conn:
+            self.db.conn.execute("insert into presence_changes values (?, ?, ?, ?)", (ts, light, int(on), pct))
+
+    def recorded(self, start: float, end: float) -> dict[str, list[tuple]]:
+        with self.db.lock:
+            rows = self.db.conn.execute("select ts, light, on_, pct from presence_changes where ts >= ? and ts < ? "
+                                        "order by ts", (start, end)).fetchall()
+        out: dict[str, list[tuple]] = {}
+        for ts, light, on, pct in rows:
+            out.setdefault(light, []).append((ts, bool(on), pct))
+        return out
+
+    def recording_since(self) -> float | None:
+        v = self.db.get_setting("presence_recording_since")
+        return float(v) if v else None
 
     def days(self) -> list[dict]:
         with self.db.lock:
@@ -175,10 +197,8 @@ class Library:
         return [{"day": r[0], "weekend": bool(r[1]), "sun": (r[2], r[3]), "lights": json.loads(r[4])} for r in rows]
 
     def has(self, day: str) -> bool:
-        """Learned, with brightness (days learned before brightness was kept are learned again)."""
         with self.db.lock:
-            row = self.db.conn.execute("select lights from presence_days where day = ?", (day,)).fetchone()
-        return row is not None and all(len(span) > 2 for spans in json.loads(row[0]).values() for span in spans)
+            return self.db.conn.execute("select 1 from presence_days where day = ?", (day,)).fetchone() is not None
 
     def add(self, day: date, sun: tuple[float, float], lights: dict) -> None:
         with self.db.lock, self.db.conn:
@@ -286,9 +306,13 @@ class PresenceSimulator:
                             for s in series if s["state"] in ("on", "off")]
         added = 0
         day = start.date() + timedelta(days=1)   # the first day may start before the history does
+        since = self.library.recording_since()
         while day < now.date():
             if not self.library.has(day.isoformat()):
                 start_ts, end_ts = at(day, 0, tz), at(day + timedelta(days=1), 0, tz)
+                if since is not None and since <= start_ts:
+                    # SmartCam recorded this whole day itself: the lights with their brightness
+                    changes = {**changes, **{l: v for l, v in self.library.recorded(start_ts - DAY, end_ts).items()}}
                 if self._home(changes.get(self.cfg.ha.alarm_entity), day, tz):
                     lights = {l: [(clock_of(start_ts + iv[0], day, tz), clock_of(start_ts + iv[1], day, tz), *iv[2:])
                                   for iv in intervals(changes.get(l, []), start_ts, end_ts, self.pc)]
@@ -350,7 +374,35 @@ class PresenceSimulator:
         """Switching lights: only when enabled (with lights alone it learns and previews)."""
         return self.pc.enabled and self.alarm is not None and self.alarm.state in ("armed_away", "pending", "triggered")
 
+    async def record(self) -> None:
+        """Keep the presence lights' changes (with brightness) as they happen."""
+        url = self.cfg.ha.url.replace("http", "ws", 1).rstrip("/") + "/api/websocket"
+        wanted = set(self.pc.lights)
+        while True:
+            try:
+                async with websockets.connect(url, max_size=None) as ws:
+                    await ws.recv()
+                    await ws.send(json.dumps({"type": "auth", "access_token": self.cfg.ha.token}))
+                    await ws.recv()
+                    await ws.send(json.dumps({"id": 1, "type": "subscribe_events", "event_type": "state_changed"}))
+                    if self.library.recording_since() is None:
+                        self.library.db.set_setting("presence_recording_since", str(time.time()))
+                    async for raw in ws:
+                        msg = json.loads(raw)
+                        data = msg.get("event", {}).get("data", {}) if msg.get("type") == "event" else {}
+                        new = data.get("new_state")
+                        if data.get("entity_id") in wanted and new and new["state"] in ("on", "off"):
+                            old = data.get("old_state") or {}
+                            pct = _pct(new["attributes"].get("brightness"))
+                            if old.get("state") != new["state"] or _pct((old.get("attributes") or {}).get("brightness")) != pct:
+                                self.library.record(datetime.fromisoformat(new["last_updated"]).timestamp(),
+                                                    data["entity_id"], new["state"] == "on", pct)
+            except (OSError, websockets.WebSocketException) as e:
+                log.warning("presence recording: Home Assistant connection lost (%s); retrying", e)
+            await asyncio.sleep(10)
+
     async def run(self) -> None:
+        asyncio.create_task(self.record())
         last_learn = 0.0
         while True:
             try:

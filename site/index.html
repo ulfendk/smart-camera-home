@@ -180,7 +180,7 @@
       <div class="card tile"><div class="ico"><span class="mdi mdi-sofa-outline"></span></div>
         <div><div class="name">Living room person</div><div class="state">Clear</div></div></div>
       <div class="card tile on"><div class="ico"><span class="mdi mdi-light-flood-down"></span></div>
-        <div><div class="name">Driveway white light</div><div class="state">On · 60 s</div></div></div>
+        <div><div class="name">Driveway lights</div><div class="state">100% · person after dark</div></div></div>
       <div class="card tile"><div class="ico"><span class="mdi mdi-car-outline"></span></div>
         <div><div class="name">Parked car</div><div class="state">Stationary · ignored</div></div></div>
       <div class="card notif span2">
@@ -226,15 +226,19 @@
       <div class="card feature"><div class="ico"><span class="mdi mdi-cellphone-message"></span></div>
         <h3>Push with picture and clip</h3><p>Notifications through the Home Assistant companion app, each with its own snapshot, followed by the clip with five seconds of lead-in. They work away from home too.</p></div>
       <div class="card feature" style="--c:#43a047"><div class="ico"><span class="mdi mdi-home-assistant"></span></div>
-        <h3>At home in Home Assistant</h3><p>An away switch, a person sensor and a snapshot camera per camera appear automatically over MQTT, ready for your automations and dashboards.</p></div>
+        <h3>At home in Home Assistant</h3><p>An alarm panel, a person sensor and a snapshot camera per camera appear automatically over MQTT. Already have an alarm switch your keypad and scripts use? SmartCam follows it, both ways.</p></div>
       <div class="card feature" style="--c:#db4437"><div class="ico"><span class="mdi mdi-shield-home-outline"></span></div>
-        <h3>An alarm, not just alerts</h3><p>Arm it from Home Assistant's alarm panel. A person indoors while you're away, or someone loitering at the door at night, sets off the cameras' red and blue warning lights for fifteen minutes.</p></div>
+        <h3>An alarm, not just alerts</h3><p>Arm it from the dashboard or your keypad, with an exit delay to leave and an entry delay to disarm. A person indoors while you're away, or someone loitering at the door at night, sets off the cameras' red and blue warning lights and a critical alert that sounds even on silent.</p></div>
       <div class="card feature" style="--c:#03a9f4"><div class="ico"><span class="mdi mdi-view-dashboard-outline"></span></div>
         <h3>Live cameras in your dashboards</h3><p>One button adds every camera to Home Assistant as a live camera entity, streamed by Home Assistant itself, at home and away.</p></div>
       <div class="card feature" style="--c:#546e7a"><div class="ico"><span class="mdi mdi-restart"></span></div>
         <h3>Cameras that come back</h3><p>A camera whose stream dies is restarted on its own: power-cycled through a smart plug in Home Assistant, or rebooted through the camera's API.</p></div>
       <div class="card feature" style="--c:#ff9800"><div class="ico"><span class="mdi mdi-light-flood-down"></span></div>
-        <h3>Floodlight on a person</h3><p>At night it switches on a Dahua camera's own white light while a person is in view, so the recording is in colour and the visitor knows it.</p></div>
+        <h3>Lights on people after dark</h3><p>Someone in the driveway at night? That camera's Home Assistant lights go to full, then back to exactly how they were two minutes after the person has gone.</p></div>
+      <div class="card feature" style="--c:#8e24aa"><div class="ico"><span class="mdi mdi-home-lightbulb-outline"></span></div>
+        <h3>Presence simulation that learns</h3><p>While armed, your lights replay a real evening from when you were home, the same kind of day, at its brightness, shifted with the season's sunset. Holidays replay your latest Sunday.</p></div>
+      <div class="card feature" style="--c:#00897b"><div class="ico"><span class="mdi mdi-car-speed-limiter"></span></div>
+        <h3>Speed checks on your road</h3><p>Two lines across the road and the distance between them: every passing car gets its speed, a full-resolution shot and a close-up for the plate, with a push above your limit.</p></div>
       <div class="card feature" style="--c:#546e7a"><div class="ico"><span class="mdi mdi-chip"></span></div>
         <h3>Runs on what you have</h3><p>YOLO11 on an NVIDIA GPU (GTX 10-series and newer) or Apple Silicon, hardware video decoding on Intel graphics.</p></div>
     </div>
