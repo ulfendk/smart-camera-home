@@ -77,8 +77,9 @@ def _wsse(user: str, password: str) -> str:
             f'<Created xmlns="{ns}wssecurity-utility-1.0.xsd">{created}</Created></UsernameToken></Security></s:Header>')
 
 
-async def sync_onvif_zone(cam: CameraConfig, tz: str) -> bool:
-    """Set the camera's time zone (keeping its NTP). Returns True if it changed."""
+async def sync_onvif_zone(cam: CameraConfig, tz: str) -> bool | None:
+    """Set the camera's time zone (keeping its NTP). True if it changed, False if it was right already,
+    None if the camera accepted the change but ignores it (some firmware does)."""
     url = f"http://{cam.ip}:{cam.onvif_port}/onvif/device_service"
     head = {"Content-Type": "application/soap+xml"}
     env = '<?xml version="1.0"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">{}<s:Body>{}</s:Body></s:Envelope>'
@@ -95,7 +96,9 @@ async def sync_onvif_zone(cam: CameraConfig, tz: str) -> bool:
             f"<TimeZone><tt:TZ>{tz}</tt:TZ></TimeZone></SetSystemDateAndTime>")))
         if r.status_code != 200:
             raise RuntimeError(f"HTTP {r.status_code}")
-        return True
+        r = await http.post(url, headers=head, content=env.format(
+            "", '<GetSystemDateAndTime xmlns="http://www.onvif.org/ver10/device/wsdl"/>'))
+        return True if f">{tz}<" in r.text else None
 
 
 async def run(cfg: Config) -> None:
@@ -104,14 +107,20 @@ async def run(cfg: Config) -> None:
         return
     zone = local_zone()
     tz = posix_tz(zone) if zone else None
+    ignored: set[str] = set()   # cameras that accept a time zone over ONVIF but ignore it
     while True:
         for name, cam in cfg.cameras.items():
             try:
                 if cam.vendor == "dahua":
                     if (drift := await sync_dahua(cam, tsc.max_drift)) is not None:
                         log.info("time: %s was %+.0fs off; set to this machine's time", name, drift)
-                elif cam.onvif_port and tz and await sync_onvif_zone(cam, tz):
-                    log.info("time: %s time zone set to %s (%s)", name, zone, tz)
+                elif cam.onvif_port and tz and name not in ignored:
+                    result = await sync_onvif_zone(cam, tz)
+                    if result:
+                        log.info("time: %s time zone set to %s (%s)", name, zone, tz)
+                    elif result is None:
+                        ignored.add(name)
+                        log.info("time: %s ignores time zones over ONVIF; its NTP keeps the clock right (in UTC)", name)
             except Exception as e:
                 log.warning("time: %s: %s", name, e)
         await asyncio.sleep(tsc.interval_hours * 3600)
