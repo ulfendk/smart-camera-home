@@ -3,82 +3,152 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Smartcam</title>
+<title>SmartCam</title>
 <style>
-  :root { --bg: #f4f4f2; --fg: #1d1d1b; --muted: #6b6b66; --card: #fff; --line: #ddd; --accent: #b4441f; --ok: #2f7d4a; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #151514; --fg: #ecece8; --muted: #9a9a94; --card: #1f1f1d; --line: #33332f; --accent: #e0703f; --ok: #5cb87c; } }
-  body { margin: 0; font: 15px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
-  header { padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-  h1 { font-size: 18px; margin: 0 8px 0 0; }
-  nav button, .away { font: inherit; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--fg); cursor: pointer; }
-  nav button[aria-pressed="true"] { border-color: var(--fg); font-weight: 600; }
-  .away { margin-left: auto; }
-  .away[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-  main { padding: 0 16px 16px; }
+  /* Home Assistant's look: Roboto, its primary blue, rounded cards, a plain app bar. */
+  :root {
+    --primary: #03a9f4; --bg: #fafafa; --card: #fff; --fg: #212121; --muted: #727272; --line: rgba(0,0,0,.12);
+    --bar: #fff; --error: #db4437; --ok: #43a047; --warn: #ff9800; --field: #f5f5f5;
+    --shadow: 0 2px 2px 0 rgba(0,0,0,.14), 0 1px 5px 0 rgba(0,0,0,.12), 0 3px 1px -2px rgba(0,0,0,.2);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111; --card: #1c1c1c; --fg: #e1e1e1; --muted: #9b9b9b; --line: rgba(225,225,225,.12);
+            --bar: #1c1c1c; --field: #2a2a2a; --shadow: 0 0 0 1px rgba(225,225,225,.06); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 Roboto, system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--fg); }
+  a { color: var(--primary); }
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 16px; height: 56px; padding: 0 16px;
+           background: var(--bar); border-bottom: 1px solid var(--line); }
+  h1 { font-size: 20px; font-weight: 500; margin: 0; }
+  nav { display: flex; gap: 4px; }
+  nav button { font: inherit; font-weight: 500; padding: 8px 14px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
+  nav button[aria-pressed="true"] { color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
+  .away { margin-left: auto; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: var(--muted); font-weight: 500; }
+  main { padding: 16px; max-width: 1400px; margin: 0 auto; }
   .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
-  figure { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  figcaption { padding: 6px 10px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  figure, .card { margin: 0; background: var(--card); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  figcaption { padding: 8px 12px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: center; }
   small, .muted { color: var(--muted); }
   iframe, figure img, figure video { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #000; object-fit: contain; }
-  .score { font-weight: 600; }
-  .score.high { color: var(--accent); }
-  .actions button { font: inherit; font-size: 13px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--fg); cursor: pointer; }
-  .actions button[aria-pressed="true"] { border-color: var(--fg); font-weight: 600; }
+  .score { font-weight: 500; }
+  .score.high { color: var(--error); }
+  .chip { font: inherit; font-size: 13px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 16px; background: none; color: var(--fg); cursor: pointer; }
+  .chip[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); }
   [hidden] { display: none !important; }
+
+  /* toggle switch, as in HA */
+  .switch { position: relative; width: 36px; height: 14px; border-radius: 7px; background: var(--line); flex: none; }
+  .switch::after { content: ""; position: absolute; top: -3px; left: -2px; width: 20px; height: 20px; border-radius: 50%; background: #fafafa; box-shadow: var(--shadow); transition: left .15s; }
+  input:checked + .switch, [aria-checked="true"] > .switch { background: color-mix(in srgb, var(--primary) 50%, transparent); }
+  input:checked + .switch::after, [aria-checked="true"] > .switch::after { left: 18px; background: var(--primary); }
+  label.toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+  label.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+
+  /* settings */
+  .settings { display: grid; gap: 16px; max-width: 980px; margin: 0 auto; }
+  .card h2 { font-size: 18px; font-weight: 500; margin: 0; padding: 16px 16px 0; }
+  .card .desc { margin: 4px 16px 0; color: var(--muted); }
+  .fields { display: grid; gap: 12px 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); padding: 16px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field > span { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .field input, .field select { font: inherit; color: var(--fg); background: var(--field); border: 0; border-bottom: 1px solid var(--muted);
+                                border-radius: 4px 4px 0 0; padding: 10px 12px; width: 100%; }
+  .field input:focus, .field select:focus { outline: none; border-bottom: 2px solid var(--primary); }
+  .field small { font-size: 12px; }
+  .field.wide { grid-column: 1 / -1; }
+  .field.toggle-field { justify-content: center; }
+  .btn { font: inherit; font-weight: 500; font-size: 14px; height: 36px; padding: 0 16px; border-radius: 18px; border: 0; cursor: pointer;
+         background: none; color: var(--primary); }
+  .btn.filled { background: var(--primary); color: #fff; }
+  .btn.danger { color: var(--error); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .cam { border-top: 1px solid var(--line); }
+  .cam-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px 0; }
+  .cam-head b { font-size: 16px; font-weight: 500; }
+  .cam-head .btn:first-of-type { margin-left: auto; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 0 16px 16px; }
+  .savebar { position: sticky; bottom: 0; display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 12px 16px;
+             background: var(--bar); border-top: 1px solid var(--line); border-radius: 12px 12px 0 0; box-shadow: var(--shadow); }
+  .savebar .msg { margin-right: auto; }
+  .msg.error { color: var(--error); white-space: pre-wrap; }
+  .msg.ok { color: var(--ok); }
+
+  /* zone editor */
+  .editor { padding: 0 16px 16px; }
+  .stage { position: relative; background: #000; border-radius: 8px; overflow: hidden; touch-action: none; }
+  .stage img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: fill; opacity: .9; }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+  .layers { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0; }
+  .layers input { font: inherit; padding: 4px 10px; border-radius: 16px; border: 1px solid var(--line); background: var(--field); color: var(--fg); width: 140px; }
+  .legend { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0,0,0,.45); color: #fff; font-size: 18px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Smartcam</h1>
-  <nav><button id="tab-live" aria-pressed="true">Live</button> <button id="tab-events" aria-pressed="false">Events</button></nav>
-  <button class="away" id="away" aria-pressed="false">Home</button>
+  <h1>SmartCam</h1>
+  <nav>
+    <button id="tab-live" aria-pressed="true">Live</button>
+    <button id="tab-events" aria-pressed="false">Events</button>
+    <button id="tab-settings" aria-pressed="false">Settings</button>
+  </nav>
+  <div class="away" id="away" role="switch" aria-checked="false" tabindex="0"><span id="away-label">Home</span><span class="switch"></span></div>
 </header>
 <main>
   <section id="live" class="grid"></section>
   <section id="events" class="grid" hidden></section>
+  <section id="settings" class="settings" hidden></section>
   <p id="status" class="muted"></p>
 </main>
+<div class="overlay" id="overlay" hidden>Restarting SmartCam…</div>
 <script>
 const GO2RTC = "go2rtc";   // proxied by smartcam, relative so it works under a path prefix
 const $ = id => document.getElementById(id);
 const fmt = ts => new Date(ts * 1000).toLocaleString();
-const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const json = (method, body) => ({method, headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
 
 function showTab(name) {
-  for (const t of ["live", "events"]) {
+  for (const t of ["live", "events", "settings"]) {
     $(t).hidden = t !== name;
     $("tab-" + t).setAttribute("aria-pressed", t === name);
   }
+  $("status").textContent = "";
   if (name === "events") loadEvents();
+  if (name === "settings") loadSettings();
 }
-$("tab-live").onclick = () => showTab("live");
-$("tab-events").onclick = () => showTab("events");
+for (const t of ["live", "events", "settings"]) $("tab-" + t).onclick = () => showTab(t);
 
+// --- away mode -----------------------------------------------------------------------------------
 async function loadAway() {
   const {away} = await (await fetch("api/away")).json();
-  $("away").setAttribute("aria-pressed", away);
-  $("away").textContent = away ? "Away" : "Home";
+  $("away").setAttribute("aria-checked", away);
+  $("away-label").textContent = away ? "Away" : "Home";
 }
-$("away").onclick = async () => {
-  const away = $("away").getAttribute("aria-pressed") !== "true";
-  await fetch("api/away", {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({away})});
+async function toggleAway() {
+  await fetch("api/away", json("PUT", {away: $("away").getAttribute("aria-checked") !== "true"}));
   loadAway();
-};
+}
+$("away").onclick = toggleAway;
+$("away").onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleAway(); } };
 
+// --- live ----------------------------------------------------------------------------------------
 async function loadLive() {
   const cams = await (await fetch("api/cameras")).json();
   for (const c of cams) {
     const fig = document.createElement("figure");
-    // Sub-streams are light enough to show all cameras at once; the name links to the main stream.
-    fig.innerHTML = `<iframe loading="lazy" allow="autoplay" src="${GO2RTC}/stream.html?src=${c.name}_sub&mode=webrtc,mse"></iframe>
-      <figcaption><a href="${GO2RTC}/stream.html?src=${c.name}" target="_blank">${esc(c.name)}</a><small>${c.location}</small></figcaption>`;
+    // Sub-streams are light enough to show all cameras at once; the name opens the main stream.
+    fig.innerHTML = `<iframe loading="lazy" allow="autoplay" src="${GO2RTC}/stream.html?src=${encodeURIComponent(c.name)}_sub&mode=webrtc,mse"></iframe>
+      <figcaption><a href="${GO2RTC}/stream.html?src=${encodeURIComponent(c.name)}" target="_blank">${esc(c.name)}</a><small>${esc(c.location)}</small></figcaption>`;
     $("live").appendChild(fig);
   }
 }
 
+// --- events --------------------------------------------------------------------------------------
 async function review(id, value, fig) {
-  await fetch(`api/events/${id}/review`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({review: value})});
-  for (const b of fig.querySelectorAll(".actions button")) b.setAttribute("aria-pressed", b.dataset.value === value);
+  await fetch(`api/events/${id}/review`, json("POST", {review: value}));
+  for (const b of fig.querySelectorAll("[data-value]")) b.setAttribute("aria-pressed", b.dataset.value === value);
 }
 
 async function loadEvents() {
@@ -96,14 +166,328 @@ async function loadEvents() {
         <span class="score ${e.score >= 4 ? "high" : ""}" title="${esc(e.reasons.join(", "))}">score ${e.score}${e.notified ? " · notified" : ""}</span>
       </figcaption>
       <figcaption><small>${esc(e.reasons.join(" · "))}</small>
-        <span class="actions"><button data-value="ok">Correct</button> <button data-value="false_positive">False alarm</button></span>
+        <span><button class="chip" data-value="ok">Correct</button> <button class="chip" data-value="false_positive">False alarm</button></span>
       </figcaption>`;
-    for (const b of fig.querySelectorAll(".actions button")) {
+    for (const b of fig.querySelectorAll("[data-value]")) {
       b.setAttribute("aria-pressed", b.dataset.value === e.review);
       b.onclick = () => review(e.id, b.getAttribute("aria-pressed") === "true" ? null : b.dataset.value, fig);
     }
     $("events").appendChild(fig);
   }
+}
+
+// --- settings ------------------------------------------------------------------------------------
+// The form edits a copy of the whole config file and sends all of it back, so settings without a
+// field here (ports, paths, ...) are kept as they are.
+let config = null, saved = false;
+
+const SECTIONS = [
+  {title: "Alerts", desc: "When an event becomes a push notification. A confirmed person scores 1; away mode, night, loitering, door zones and a person on another camera just before add to it.", fields: [
+    ["rules.notify_score", "Notify at score", "number", 4, "push notifications from this score"],
+    ["rules.loiter_seconds", "Loitering after (s)", "number", 30, "time in a zone that counts as loitering"],
+    ["rules.door_zones", "Door zones", "list", [], "zone names that count as a door, comma-separated"],
+    ["rules.night_start", "Night starts (hour)", "number", 22],
+    ["rules.night_end", "Night ends (hour)", "number", 6],
+    ["rules.merge_gap", "Merge events within (s)", "number", 30, "a person back within this long continues the event"],
+    ["rules.sequence_window", "Camera sequence window (s)", "number", 60, "a person on another camera this recently adds suspicion"],
+    ["rules.pre_capture", "Clip lead-in (s)", "number", 5],
+    ["rules.post_capture", "Clip tail (s)", "number", 5],
+  ]},
+  {title: "Recording", desc: "What stays on disk.", fields: [
+    ["record.continuous_hours", "Keep everything for (hours)", "number", 6, "rolling buffer; event clips are cut from it"],
+    ["record.event_days", "Keep events for (days)", "number", 10, "clips and snapshots"],
+    ["record.min_free_gb", "Keep free (GB)", "number", 10, "below this the oldest recordings, then events, are deleted"],
+    ["record.segment_seconds", "Segment length (s)", "number", 10],
+  ]},
+  {title: "Detection", fields: [
+    ["detect.fps", "Frames per second", "number", 5, "per camera"],
+    ["detect.max_width", "Max width (px)", "number", 1280, "sub-streams above this are scaled down"],
+    ["detect.hwaccel", "Hardware decoding", "select", "none", "", ["none", "vaapi", "videotoolbox"]],
+    ["detect.model", "Model", "select", "models/yolo11s.onnx", "yolo11m is more accurate, yolo11s faster", ["models/yolo11s.onnx", "models/yolo11m.onnx"]],
+  ]},
+  {title: "Home Assistant", desc: "MQTT entities (away switch, person sensors, snapshot cameras) and push notifications through the companion app.", fields: [
+    ["mqtt.enabled", "MQTT entities", "bool", false],
+    ["mqtt.host", "MQTT host", "text", ""],
+    ["mqtt.port", "MQTT port", "number", 1883],
+    ["mqtt.user", "MQTT user", "text", ""],
+    ["mqtt.password", "MQTT password", "password", ""],
+    ["mqtt.topic_prefix", "Topic prefix", "text", "smartcam"],
+    ["mqtt.discovery_prefix", "Discovery prefix", "text", "homeassistant"],
+    ["ha.enabled", "Push notifications", "bool", false],
+    ["ha.url", "Home Assistant URL", "text", "", "e.g. http://homeassistant.local:8123"],
+    ["ha.token", "Long-lived access token", "password", "", "HA profile → Security"],
+    ["ha.notify", "Notify services", "list", [], "e.g. mobile_app_my_phone, comma-separated"],
+  ]},
+  {title: "Floodlight", desc: "Switch on a Dahua camera's white light while a person is in view at night.", fields: [
+    ["lights.enabled", "Enabled", "bool", false],
+    ["lights.dry_run", "Dry run (only log)", "bool", true],
+    ["lights.cameras", "Cameras", "list", [], "empty = every outdoor Dahua"],
+    ["lights.on_seconds", "On for (s)", "number", 60, "after the person was last seen"],
+    ["lights.max_on_seconds", "At most (s)", "number", 600],
+    ["lights.cooldown", "Cooldown (s)", "number", 20],
+    ["lights.dark_threshold", "Dark below (0-255)", "number", 70, "mean image brightness"],
+  ]},
+  {title: "Watchdog", desc: "Restart a camera whose stream died: power-cycle its smart plug through Home Assistant, or reboot a Dahua through its API.", fields: [
+    ["watchdog.enabled", "Enabled", "bool", true],
+    ["watchdog.stale_seconds", "Dead after (s)", "number", 120, "without frames"],
+    ["watchdog.off_seconds", "Power off for (s)", "number", 10],
+    ["watchdog.cooldown_minutes", "Cooldown (min)", "number", 30],
+    ["watchdog.max_per_day", "At most per day", "number", 4],
+  ]},
+];
+
+const CAMERA_FIELDS = [
+  ["location", "Location", "select", "outdoor", "indoor people while away score the maximum", ["outdoor", "indoor"]],
+  ["vendor", "Vendor", "select", "generic", "dahua enables the white light and reboots", ["generic", "dahua"]],
+  ["ip", "IP address", "text", ""],
+  ["record", "Recording stream", "text", "", "main stream, e.g. rtsp://${CAM_USER}:${CAM_PASS}@{ip}:554/live", null, true],
+  ["detect", "Detection stream", "text", "", "sub stream", null, true],
+  ["power_switch", "Power switch", "text", "", "HA switch powering the camera, e.g. switch.camera_plug"],
+];
+
+const getPath = (obj, path) => path.split(".").reduce((o, k) => o?.[k], obj);
+function setPath(obj, path, value) {
+  const keys = path.split("."), last = keys.pop();
+  const target = keys.reduce((o, k) => (o[k] ??= {}), obj);
+  if (value === undefined) delete target[last]; else target[last] = value;
+}
+
+function field(obj, [path, label, type, dflt, help, options, wide]) {
+  const el = document.createElement("label");
+  el.className = "field" + (wide ? " wide" : "") + (type === "bool" ? " toggle-field" : "");
+  const value = getPath(obj, path);
+  const changed = v => { setPath(obj, path, v); dirty(); };
+  if (type === "bool") {
+    el.innerHTML = `<span class="toggle" style="display:flex;align-items:center;gap:12px;font-size:14px;color:var(--fg)"><input type="checkbox"><span class="switch"></span>${esc(label)}</span>`;
+    el.classList.add("toggle");
+    const input = el.querySelector("input");
+    input.checked = value ?? dflt;
+    input.onchange = () => changed(input.checked);
+  } else {
+    let input;
+    if (type === "select") {
+      input = document.createElement("select");
+      const opts = [...new Set([...(options || []), ...(value != null ? [String(value)] : [])])];
+      input.innerHTML = opts.map(o => `<option>${esc(o)}</option>`).join("");
+      input.value = value ?? dflt;
+      input.onchange = () => changed(input.value);
+    } else {
+      input = document.createElement("input");
+      input.type = type === "number" ? "number" : type === "password" ? "password" : "text";
+      if (type === "number") input.step = "any";
+      input.value = type === "list" ? (value || []).join(", ") : (value ?? "");
+      input.placeholder = type === "list" ? (dflt || []).join(", ") : (dflt ?? "");
+      input.oninput = () => {
+        const raw = input.value.trim();
+        if (raw === "") return changed(undefined);   // empty: back to the default
+        if (type === "number") return changed(Number(raw));
+        if (type === "list") return changed(raw.split(",").map(s => s.trim()).filter(Boolean));
+        changed(input.value);
+      };
+    }
+    el.innerHTML = `<span>${esc(label)}</span>`;
+    el.appendChild(input);
+    if (help) el.insertAdjacentHTML("beforeend", `<small class="muted">${esc(help)}</small>`);
+  }
+  return el;
+}
+
+function dirty() {
+  saved = false;
+  $("save").disabled = false;
+  $("msg").className = "msg muted";
+  $("msg").textContent = "Unsaved changes";
+}
+
+async function loadSettings() {
+  const r = await fetch("api/config");
+  if (!r.ok) { $("settings").innerHTML = `<p class="muted">Settings are not available (${r.status}).</p>`; return; }
+  config = await r.json();
+  renderSettings();
+}
+
+function renderSettings() {
+  const root = $("settings");
+  root.replaceChildren();
+
+  const cams = document.createElement("div");
+  cams.className = "card";
+  cams.innerHTML = `<h2>Cameras</h2><p class="desc">Streams, indoor/outdoor, and zones and masks drawn on a live snapshot. Use \${VAR} for secrets kept in .env.</p>`;
+  for (const [name, cam] of Object.entries(config.cameras || {})) cams.appendChild(cameraCard(name, cam));
+  const add = document.createElement("div");
+  add.className = "row";
+  add.style.paddingTop = "16px";
+  add.innerHTML = `<label class="field" style="flex:1;max-width:280px"><span>New camera name</span><input id="new-cam" placeholder="e.g. garage"></label><button class="btn" id="add-cam">Add camera</button>`;
+  cams.appendChild(add);
+  root.appendChild(cams);
+  $("add-cam").onclick = () => {
+    const name = $("new-cam").value.trim().replace(/\s+/g, "_");
+    if (!name || config.cameras[name]) return;
+    config.cameras[name] = {location: "outdoor", ip: "", record: "", detect: ""};
+    dirty(); renderSettings();
+  };
+
+  for (const s of SECTIONS) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<h2>${esc(s.title)}</h2>${s.desc ? `<p class="desc">${esc(s.desc)}</p>` : ""}`;
+    const grid = document.createElement("div");
+    grid.className = "fields";
+    for (const f of s.fields) grid.appendChild(field(config, f));
+    card.appendChild(grid);
+    root.appendChild(card);
+  }
+
+  const bar = document.createElement("div");
+  bar.className = "savebar";
+  bar.innerHTML = `<span class="msg muted" id="msg"></span><button class="btn" id="restart" ${saved ? "" : "disabled"}>Restart to apply</button><button class="btn filled" id="save" disabled>Save</button>`;
+  root.appendChild(bar);
+  $("save").onclick = save;
+  $("restart").onclick = restart;
+}
+
+function cameraCard(name, cam) {
+  const box = document.createElement("div");
+  box.className = "cam";
+  box.innerHTML = `<div class="cam-head"><b>${esc(name)}</b><button class="btn" data-act="zones">Zones &amp; masks</button><button class="btn danger" data-act="remove">Remove</button></div>`;
+  const grid = document.createElement("div");
+  grid.className = "fields";
+  for (const f of CAMERA_FIELDS) grid.appendChild(field(cam, f));
+  box.appendChild(grid);
+  const editor = document.createElement("div");
+  editor.className = "editor";
+  editor.hidden = true;
+  box.appendChild(editor);
+  box.querySelector('[data-act="remove"]').onclick = () => {
+    if (box.dataset.confirm !== "1") {   // two clicks instead of a confirm() dialog
+      box.dataset.confirm = "1";
+      box.querySelector('[data-act="remove"]').textContent = "Click again to remove";
+      return;
+    }
+    delete config.cameras[name];
+    dirty(); renderSettings();
+  };
+  box.querySelector('[data-act="zones"]').onclick = () => {
+    editor.hidden = !editor.hidden;
+    if (!editor.hidden && !editor.firstChild) zoneEditor(editor, name, cam);
+  };
+  return box;
+}
+
+// Polygons are stored flat ([x1, y1, x2, y2, ...], normalised 0..1), as in Frigate.
+const toPoints = flat => { const p = []; for (let i = 0; i + 1 < (flat || []).length; i += 2) p.push([flat[i], flat[i + 1]]); return p; };
+const toFlat = pts => pts.flatMap(([x, y]) => [Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000]);
+const isFlat = v => Array.isArray(v) && v.every(n => typeof n === "number");
+const normalise = v => isFlat(v) ? toPoints(v) : (v || []).map(p => [p[0], p[1]]);
+const LAYER_COLORS = {person_mask: "#db4437", motion_mask: "#ff9800"};
+
+function zoneEditor(root, name, cam) {
+  const layers = {};
+  for (const [z, poly] of Object.entries(cam.zones || {})) layers["zone:" + z] = normalise(poly);
+  layers.person_mask = normalise(cam.person_mask);
+  layers.motion_mask = normalise(cam.motion_mask);
+  let active = Object.keys(layers)[0], dragging = null;
+
+  root.innerHTML = `
+    <div class="layers"></div>
+    <div class="stage"><img alt="snapshot of ${esc(name)}" src="${GO2RTC}/api/frame.jpeg?src=${encodeURIComponent(name)}_sub&t=${Date.now()}"><canvas></canvas></div>
+    <div class="layers">
+      <input placeholder="new zone name"><button class="chip" data-act="add">Add zone</button>
+      <button class="chip" data-act="undo">Undo point</button><button class="chip" data-act="clear">Clear</button>
+      <button class="chip" data-act="delete">Delete zone</button><button class="chip" data-act="refresh">New snapshot</button>
+      <small class="muted">Click to add points, drag to move them.</small>
+    </div>`;
+  const canvas = root.querySelector("canvas"), img = root.querySelector("img"), ctx = canvas.getContext("2d");
+  const chips = root.querySelector(".layers");
+
+  function commit() {
+    const zones = {};
+    for (const [k, pts] of Object.entries(layers)) if (k.startsWith("zone:") && pts.length >= 3) zones[k.slice(5)] = toFlat(pts);
+    if (Object.keys(zones).length) cam.zones = zones; else delete cam.zones;
+    for (const m of ["person_mask", "motion_mask"]) {
+      if (layers[m].length >= 3) cam[m] = toFlat(layers[m]); else delete cam[m];
+    }
+    dirty();
+  }
+
+  function renderChips() {
+    chips.innerHTML = Object.keys(layers).map(k => {
+      const label = k.startsWith("zone:") ? k.slice(5) : k === "person_mask" ? "Person mask" : "Motion mask";
+      const color = LAYER_COLORS[k] || "#03a9f4";
+      return `<button class="chip" data-layer="${esc(k)}" aria-pressed="${k === active}"><span class="legend" style="background:${color}"></span>${esc(label)}</button>`;
+    }).join("");
+    for (const b of chips.querySelectorAll("[data-layer]")) b.onclick = () => { active = b.dataset.layer; renderChips(); draw(); };
+    root.querySelector('[data-act="delete"]').disabled = !active?.startsWith("zone:");
+  }
+
+  function draw() {
+    const r = canvas.getBoundingClientRect();
+    canvas.width = r.width * devicePixelRatio; canvas.height = r.height * devicePixelRatio;
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    for (const [k, pts] of Object.entries(layers)) {
+      if (!pts.length) continue;
+      const color = LAYER_COLORS[k] || "#03a9f4", on = k === active;
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, x * r.width, y * r.height));
+      ctx.closePath();
+      ctx.fillStyle = color + (on ? "55" : "30"); ctx.fill();
+      ctx.lineWidth = on ? 2.5 : 1.5; ctx.strokeStyle = color; ctx.stroke();
+      if (on) for (const [x, y] of pts) { ctx.beginPath(); ctx.arc(x * r.width, y * r.height, 5, 0, 7); ctx.fillStyle = "#fff"; ctx.fill(); ctx.stroke(); }
+    }
+  }
+
+  const pos = e => { const r = canvas.getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]; };
+  canvas.onpointerdown = e => {
+    if (!active) return;
+    const [x, y] = pos(e), r = canvas.getBoundingClientRect(), pts = layers[active];
+    const near = pts.findIndex(([px, py]) => Math.hypot((px - x) * r.width, (py - y) * r.height) < 10);
+    if (near >= 0) dragging = near; else { pts.push([x, y]); commit(); }
+    canvas.setPointerCapture(e.pointerId); draw();
+  };
+  canvas.onpointermove = e => { if (dragging !== null) { layers[active][dragging] = pos(e); draw(); } };
+  canvas.onpointerup = () => { if (dragging !== null) { dragging = null; commit(); } };
+
+  const act = a => root.querySelector(`[data-act="${a}"]`);
+  act("add").onclick = () => {
+    const input = root.querySelector("input"), z = input.value.trim().replace(/\s+/g, "_");
+    if (!z || layers["zone:" + z]) return;
+    layers["zone:" + z] = []; active = "zone:" + z; input.value = ""; renderChips(); draw();
+  };
+  act("undo").onclick = () => { layers[active]?.pop(); commit(); draw(); };
+  act("clear").onclick = () => { if (layers[active]) layers[active] = []; commit(); draw(); };
+  act("delete").onclick = () => { if (!active?.startsWith("zone:")) return; delete layers[active]; active = Object.keys(layers)[0]; commit(); renderChips(); draw(); };
+  act("refresh").onclick = () => { img.src = `${GO2RTC}/api/frame.jpeg?src=${encodeURIComponent(name)}_sub&t=${Date.now()}`; };
+  img.onload = draw;
+  new ResizeObserver(draw).observe(canvas);
+  renderChips(); draw();
+}
+
+async function save() {
+  $("save").disabled = true;
+  const r = await fetch("api/config", json("PUT", config));
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    $("msg").className = "msg error";
+    $("msg").textContent = "Not saved: " + (body.detail || r.status);
+    $("save").disabled = false;
+    return;
+  }
+  saved = true;
+  $("msg").className = "msg ok";
+  $("msg").textContent = body.changed ? "Saved. Restart to apply the changes." : "Nothing changed.";
+  $("restart").disabled = !body.changed;
+  config = await (await fetch("api/config")).json();   // masked secrets, as stored
+}
+
+async function restart() {
+  $("overlay").hidden = false;
+  await fetch("api/restart", {method: "POST"}).catch(() => {});
+  await new Promise(r => setTimeout(r, 3000));
+  for (let i = 0; i < 120; i++) {
+    try { if ((await fetch("api/cameras")).ok) { location.reload(); return; } } catch {}
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  $("overlay").textContent = "SmartCam did not come back. Check its log.";
 }
 
 loadAway();

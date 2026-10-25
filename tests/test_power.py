@@ -38,3 +38,9 @@ def test_cooldown_and_daily_limit():
     w.cycles["living_room"].append(200 + 31 * 60)
     assert "living_room" not in w.due(now=200 + 120 * 60)   # 2 cycles today: the limit
     assert "living_room" in w.due(now=200 + 86400 + 1)
+
+
+def test_disabled_watchdog_watches_nothing():
+    cfg = load_config(TEST_CONFIG)
+    cfg.watchdog = {"enabled": False}
+    assert PowerWatchdog(cfg, now=0).last_frame == {}

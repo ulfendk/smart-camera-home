@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
+import os
 import signal
+import sys
 
 import uvicorn
 
@@ -11,6 +13,10 @@ from .config import load_config
 from .db import Database
 from .events import EventEngine, RulesConfig
 from .web import create_app
+
+
+class Restart(Exception):
+    """Raised to leave the task group cleanly and start again with the new config."""
 
 
 async def main() -> None:
@@ -28,7 +34,8 @@ async def main() -> None:
     from .power import PowerWatchdog
     if (wd := PowerWatchdog(cfg)).last_frame:   # any camera it can restart
         watchdog = wd
-    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine), host="0.0.0.0", port=cfg.web.port,
+    restart = asyncio.Event()
+    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine, restart), host="0.0.0.0", port=cfg.web.port,
                                            log_level="warning", lifespan="off"))  # no startup hooks
     async with asyncio.TaskGroup() as tg:
         tg.create_task(go2rtc.run(cfg))
@@ -41,16 +48,34 @@ async def main() -> None:
         tg.create_task(server.serve())
         if cfg.mqtt.enabled:
             tg.create_task(mqtt.run())
+        tg.create_task(_restart_on(restart))
 
 
-async def run_until_stopped() -> None:
+async def _restart_on(event: asyncio.Event) -> None:
+    await event.wait()
+    await asyncio.sleep(0.5)   # let the HTTP response go out
+    logging.getLogger("smartcam").info("restarting to apply the new config")
+    raise Restart
+
+
+async def run_until_stopped() -> bool:
+    """Run until stopped. Returns True if a restart was requested (to apply a new config)."""
     # `docker stop` sends SIGTERM: cancel cleanly so lights are switched back and recorders stop.
     asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, asyncio.current_task().cancel)
-    await main()
+    restart = False
+    try:
+        await main()
+    except* Restart:
+        restart = True
+    return restart
 
 
 if __name__ == "__main__":
+    restart = False
     try:
-        asyncio.run(run_until_stopped())
+        restart = asyncio.run(run_until_stopped())
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
+    if restart:
+        # Everything has shut down (lights back, recorders stopped); start over in this process.
+        os.execv(sys.executable, [sys.executable, "-m", "smartcam"])

@@ -54,7 +54,8 @@ lights:
   on_seconds: 60
   dark_threshold: 70
 
-watchdog:               # for cameras with power_switch (needs the ha section)
+watchdog:               # restarts cameras whose stream died
+  enabled: true
   stale_seconds: 120    # no frames for this long = dead stream
   off_seconds: 10
   cooldown_minutes: 30

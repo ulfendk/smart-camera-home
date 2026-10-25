@@ -19,6 +19,7 @@ from ..config import Config
 from ..db import Database
 from ..events import EventEngine
 from ..recorder import segment_start, segments
+from ..settings import Settings
 
 INDEX = (Path(__file__).parent / "index.html").read_text()
 
@@ -46,7 +47,7 @@ class CollapseSlashes:
         await self.app(scope, receive, send)
 
 
-def create_app(cfg: Config, db: Database, engine: EventEngine) -> FastAPI:
+def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.Event | None = None) -> FastAPI:
     app = FastAPI(title="smartcam")
     app.add_middleware(CollapseSlashes)
     for sub in ("recordings", "snapshots", "clips"):
@@ -73,16 +74,24 @@ def create_app(cfg: Config, db: Database, engine: EventEngine) -> FastAPI:
         await ws.accept()
         try:
             async with websockets.connect(f"ws://{go2rtc}/api/ws?{ws.url.query}", max_size=None) as upstream:
+                # Either side may go away at any moment (a page reload, a camera dropping out);
+                # whichever relay ends first ends the session.
                 async def down():
-                    async for msg in upstream:
-                        await (ws.send_bytes(msg) if isinstance(msg, bytes) else ws.send_text(msg))
+                    try:
+                        async for msg in upstream:
+                            await (ws.send_bytes(msg) if isinstance(msg, bytes) else ws.send_text(msg))
+                    except Exception:
+                        pass
 
                 async def up():
-                    while True:
-                        msg = await ws.receive()
-                        if msg["type"] == "websocket.disconnect":
-                            return
-                        await upstream.send(msg.get("bytes") or msg.get("text"))
+                    try:
+                        while True:
+                            msg = await ws.receive()
+                            if msg["type"] == "websocket.disconnect":
+                                return
+                            await upstream.send(msg.get("bytes") or msg.get("text"))
+                    except Exception:
+                        pass
 
                 tasks = [asyncio.create_task(down()), asyncio.create_task(up())]
                 await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -93,7 +102,7 @@ def create_app(cfg: Config, db: Database, engine: EventEngine) -> FastAPI:
         finally:
             try:
                 await ws.close()
-            except RuntimeError:
+            except Exception:
                 pass  # already closed
 
     @app.get("/api/cameras")
@@ -121,6 +130,31 @@ def create_app(cfg: Config, db: Database, engine: EventEngine) -> FastAPI:
     async def put_away(body: Away) -> Away:
         await engine.set_away(body.away)
         return Away(away=engine.away)
+
+    @app.get("/api/config")
+    def get_config() -> dict:
+        """The config file as written (secrets masked), for the settings UI."""
+        if cfg.path is None:
+            raise HTTPException(404, "no config file")
+        return Settings(cfg.path).read()
+
+    @app.put("/api/config")
+    def put_config(body: dict) -> dict:
+        if cfg.path is None:
+            raise HTTPException(404, "no config file")
+        try:
+            changed = Settings(cfg.path).write(body)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"changed": changed}
+
+    @app.post("/api/restart")
+    def post_restart() -> dict:
+        """Restart smartcam to apply a saved config."""
+        if restart is None:
+            raise HTTPException(501, "restart not available")
+        restart.set()
+        return {"restarting": True}
 
     @app.get("/api/recordings/{camera}")
     def recordings(camera: str, start: float, end: float) -> list[dict]:

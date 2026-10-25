@@ -17,6 +17,7 @@ dependencies = [
   "fastapi>=0.162.0",
   "uvicorn[standard]>=0.54.0",
   "aiomqtt>=2.5.1",
+  "ruamel-yaml>=0.18",
 ]
 
 [dependency-groups]

@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 
 
 class WatchdogConfig(BaseModel):
+    enabled: bool = True
     stale_seconds: float = 120      # no frames for this long = dead stream
     off_seconds: float = 10         # how long the power stays off
     cooldown_minutes: float = 30    # minimum time between cycles of the same camera (it also needs time to boot)
@@ -31,10 +32,11 @@ class PowerWatchdog:
     def __init__(self, cfg: Config, wd: WatchdogConfig | None = None, now: float | None = None):
         self.cfg, self.wd = cfg, wd or WatchdogConfig(**cfg.watchdog)
         now = time.monotonic() if now is None else now
+        on = self.wd.enabled
         self.switches = {name: cam.power_switch for name, cam in cfg.cameras.items()
-                         if cam.power_switch and cfg.ha.enabled}
+                         if on and cam.power_switch and cfg.ha.enabled}
         self.dahua = {name: cam for name, cam in cfg.cameras.items()
-                      if cam.vendor == "dahua" and name not in self.switches}
+                      if on and cam.vendor == "dahua" and name not in self.switches}
         watched = [*self.switches, *self.dahua]
         self.last_frame = {name: now for name in watched}
         self.cycles: dict[str, list[float]] = {name: [] for name in watched}

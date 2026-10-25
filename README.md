@@ -73,8 +73,10 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 
 ## Using it
 
-- Web UI on port 8971: live view, events with snapshots and clips, a Home/Away toggle, and a
-  "false alarm" button on each event.
+- Web UI on port 8971: live view, events with snapshots and clips, a Home/Away toggle, a
+  "false alarm" button on each event, and Settings: every option, zones and masks drawn on a live
+  snapshot, and a restart to apply. Saving keeps the file's comments and `${VAR}` references, and
+  literal passwords are never sent to the browser.
 - go2rtc on port 1984 restreams every camera as `<camera>` (main) and `<camera>_sub`.
 - Home Assistant, with `mqtt` enabled: `switch.smartcam_away`, plus a person sensor and a snapshot
   camera per camera. With `ha` enabled: push notifications through `notify.mobile_app_*`, each with
@@ -139,7 +141,6 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 
 ## Roadmap
 
-- Configuration UI in the web app
 - Alarm mode: arm/disarm from Home Assistant; when triggered, the Dahua red/blue warning lights
   flash for 10-15 minutes and the siren sounds in bursts (e.g. 10 s on, a pause, a few rounds),
   then everything stays off until disarmed and triggered again
