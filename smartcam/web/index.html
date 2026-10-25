@@ -241,7 +241,7 @@ const SECTIONS = [
     ["ha.url", "Home Assistant URL", "text", "", "e.g. http://homeassistant.local:8123"],
     ["ha.token", "Long-lived access token", "password", "", "HA profile → Security"],
     ["ha.notify", "Notify services", "list", [], "e.g. mobile_app_my_phone, comma-separated"],
-    ["ha.alarm_critical", "Alarm as critical alert", "bool", false, "iOS: overrides silent mode (allow critical alerts for the app)"],
+    ["ha.alarm_critical", "Alarm as critical alert", "bool", true, "plays the alarm sound even in silent mode or Focus (iOS: allow critical alerts for the app)"],
     ["ha.alarm_entity", "Follow alarm entity", "text", "", "arm and disarm together with e.g. input_boolean.alarm (keypad, scripts), both ways"],
     ["ha.away_entity", "Follow away entity", "text", "", "away mode together with e.g. input_boolean.away, both ways"],
     ["go2rtc.rtsp_lan", "Share streams on the LAN", "bool", false, "password-protected RTSP restreams, needed for live cameras in Home Assistant"],

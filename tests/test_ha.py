@@ -61,6 +61,7 @@ def test_detect_same_as_record_uses_one_camera_connection():
 def test_alarm_push_is_time_sensitive_or_critical_with_its_own_image():
     from smartcam.ha.notify import alarm_payload
     cfg = load_config(TEST_CONFIG)
+    cfg.ha.alarm_critical = False
     p = alarm_payload(cfg, "living_room: indoor while away", {"id": 7})
     assert p["data"]["push"]["interruption-level"] == "time-sensitive"
     assert p["data"]["priority"] == "high" and p["data"]["entity_id"] == "camera.smartcam_alert_8"
