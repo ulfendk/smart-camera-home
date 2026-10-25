@@ -66,12 +66,16 @@
          background: none; color: var(--primary); }
   .btn.filled { background: var(--primary); color: #fff; }
   .btn.danger { color: var(--error); }
+  .btn.outlined { border: 1px solid var(--line); }
   .btn:disabled { opacity: .45; cursor: default; }
   .cam { border-top: 1px solid var(--line); }
   .cam-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px 0; }
   .cam-head b { font-size: 16px; font-weight: 500; }
   .cam-head .btn:first-of-type { margin-left: auto; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 0 16px 16px; }
+  .add-row { align-items: flex-end; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .add-row .field { flex: 1; max-width: 320px; }
+  .add-row .btn { height: 41px; }   /* the input's height, so the two line up */
   .savebar { position: sticky; bottom: 0; display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 12px 16px;
              background: var(--bar); border-top: 1px solid var(--line); border-radius: 12px 12px 0 0; box-shadow: var(--shadow); }
   .savebar .msg { margin-right: auto; }
@@ -345,9 +349,8 @@ function renderSettings() {
   cams.innerHTML = `<h2>Cameras</h2><p class="desc">Streams, indoor/outdoor, and zones and masks drawn on a live snapshot. Use \${VAR} for secrets kept in .env.</p>`;
   for (const [name, cam] of Object.entries(config.cameras || {})) cams.appendChild(cameraCard(name, cam));
   const add = document.createElement("div");
-  add.className = "row";
-  add.style.paddingTop = "16px";
-  add.innerHTML = `<label class="field" style="flex:1;max-width:280px"><span>New camera name</span><input id="new-cam" placeholder="e.g. garage"></label><button class="btn" id="add-cam">Add camera</button>`;
+  add.className = "row add-row";
+  add.innerHTML = `<label class="field"><span>New camera name</span><input id="new-cam" placeholder="e.g. garage"></label><button class="btn outlined" id="add-cam">Add camera</button>`;
   cams.appendChild(add);
   root.appendChild(cams);
   $("add-cam").onclick = () => {
