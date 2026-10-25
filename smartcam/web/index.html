@@ -241,6 +241,7 @@ const SECTIONS = [
     ["ha.url", "Home Assistant URL", "text", "", "e.g. http://homeassistant.local:8123"],
     ["ha.token", "Long-lived access token", "password", "", "HA profile → Security"],
     ["ha.notify", "Notify services", "list", [], "e.g. mobile_app_my_phone, comma-separated"],
+    ["ha.alarm_critical", "Alarm as critical alert", "bool", false, "iOS: overrides silent mode (allow critical alerts for the app)"],
     ["go2rtc.rtsp_lan", "Share streams on the LAN", "bool", false, "password-protected RTSP restreams, needed for live cameras in Home Assistant"],
     ["ha.smartcam_host", "SmartCam address for Home Assistant", "text", "", "this machine's IP or hostname, e.g. 192.168.1.10"],
   ], ha: true},

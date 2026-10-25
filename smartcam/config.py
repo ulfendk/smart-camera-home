@@ -76,6 +76,7 @@ class HaConfig(BaseModel):
     notify: list[str] = []          # notify services, e.g. mobile_app_my_phone
     event_url: str | None = None    # link opened from a notification; {id} is replaced by the event id
     smartcam_host: str | None = None   # this machine's address as Home Assistant sees it (for HA cameras)
+    alarm_critical: bool = False    # alarm pushes as iOS critical alerts (override silent mode)
 
 
 class PathsConfig(BaseModel):

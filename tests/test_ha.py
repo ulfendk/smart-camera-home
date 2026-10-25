@@ -56,3 +56,15 @@ def test_detect_same_as_record_uses_one_camera_connection():
     cam.detect = cam.record
     streams = go2rtc_config(cfg)["streams"]
     assert streams["living_room_sub"] == ["rtsp://127.0.0.1:8554/living_room"]
+
+
+def test_alarm_push_is_time_sensitive_or_critical_with_its_own_image():
+    from smartcam.ha.notify import alarm_payload
+    cfg = load_config(TEST_CONFIG)
+    p = alarm_payload(cfg, "living_room: indoor while away", {"id": 7})
+    assert p["data"]["push"]["interruption-level"] == "time-sensitive"
+    assert p["data"]["priority"] == "high" and p["data"]["entity_id"] == "camera.smartcam_alert_8"
+    cfg.ha.alarm_critical = True
+    p = alarm_payload(cfg, "test", None)
+    assert p["data"]["push"]["interruption-level"] == "critical" and p["data"]["push"]["sound"]["critical"] == 1
+    assert "entity_id" not in p["data"]

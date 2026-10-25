@@ -44,6 +44,7 @@ class Alarm:
         # camera -> object with async output(kind, on); injectable for tests
         self.outputs = outputs if outputs is not None else {n: _rpc_for(cfg, n) for n in names if n in cfg.cameras}
         self.on_state: list[Callable[[str], Awaitable[None]]] = []
+        self.on_trigger: list[Callable[[str, dict | None], Awaitable[None]]] = []   # (why, event)
         self.spent = self.db.get_setting("alarm_spent", "0") == "1"   # triggered once since arming
         self._task: asyncio.Task | None = None
         engine.on_score.append(self._scored)
@@ -85,14 +86,20 @@ class Alarm:
 
     async def _scored(self, ev: OpenEvent) -> None:
         if self.ac.enabled and self.state == ARMED and not self.spent and ev.score >= self.ac.trigger_score:
-            await self.trigger(f"{ev.camera}: {', '.join(ev.reasons)}")
+            await self.trigger(f"{ev.camera}: {', '.join(r for r in ev.reasons if r != 'person')}", ev.id)
 
-    async def trigger(self, why: str = "manual") -> None:
+    async def trigger(self, why: str = "manual", event_id: int | None = None) -> None:
         self.spent = True
         self.db.set_setting("alarm_spent", "1")
         log.warning("ALARM triggered (%s)", why)
         await self._set_state(TRIGGERED)
         self._task = asyncio.create_task(self._deter())
+        event = self.db.event(event_id) if event_id is not None else None
+        for cb in self.on_trigger:
+            try:
+                await cb(why, event)
+            except Exception:
+                log.exception("alarm trigger callback failed")
 
     async def _all(self, kind: int, on: bool) -> None:
         async def one(name, out):

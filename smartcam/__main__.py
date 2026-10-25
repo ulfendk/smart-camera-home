@@ -33,7 +33,7 @@ async def main() -> None:
         mqtt = HaMqtt(cfg, engine, alarm)
     if cfg.ha.enabled:
         from .ha.notify import HaNotifier
-        HaNotifier(cfg, engine)
+        HaNotifier(cfg, engine, alarm)
     watchdog = None
     from .power import PowerWatchdog
     if (wd := PowerWatchdog(cfg)).last_frame:   # any camera it can restart
