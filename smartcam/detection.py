@@ -75,8 +75,12 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
                          cam.name, stats["frames"] / elapsed, 100 * stats["detects"] / max(stats["frames"], 1),
                          1000 * stats["busy"] / max(stats["frames"], 1), len(res.tracks))
                 stats = {"frames": 0, "detects": 0, "busy": 0.0, "since": time.monotonic()}
-            # Occupancy: a confirmed person seen recently, sitting still included. Nothing is stored for it.
-            if any(t.label == "person" and t.id in pipeline.confirmed_ids and t.last_ts == frame.ts for t in res.tracks):
+            # Occupancy: a person seen recently, sitting still included; confirmed, or detected steadily
+            # outside the spots learned as false alarms (lamps). Nothing is stored for it.
+            if any(t.label == "person" and t.last_ts == frame.ts
+                   and (t.id in pipeline.confirmed_ids
+                        or (t.hits >= 3 and t.max_score >= 0.6 and not static_map.is_hot(t.box, frame.ts)))
+                   for t in res.tracks):
                 last_person = frame.ts
             now_occupied = frame.ts - last_person < OCCUPANCY_HOLD
             if now_occupied != occupied:
