@@ -1,13 +1,15 @@
-# smartcam
+# SmartCam
 
-A self-hosted NVR for Home Assistant homes. It records your cameras, detects people, and sends a
-Home Assistant push notification with a snapshot and clip when something looks suspicious,
-especially while nobody is home. At night it can switch on a Dahua camera's own white light when a
-person is in view.
+**The camera alarm for Home Assistant.** SmartCam records your cameras, detects people, and sends a
+Home Assistant push notification with a snapshot and clip when something looks suspicious, especially
+while nobody is home. Armed, it turns a serious event into an alarm: the cameras' red/blue warning
+lights flash. At night it can switch on a Dahua camera's own white light when a person is in view, and
+it restarts cameras whose stream has died. It runs on its own machine and lives in the Home Assistant
+sidebar.
 
 **Website:** https://ulfendk.github.io/smart-camera-home/
 
-smartcam was inspired by [Frigate](https://frigate.video), and borrows its good ideas: go2rtc
+SmartCam was inspired by [Frigate](https://frigate.video), and borrows its good ideas: go2rtc
 restreaming, continuous recording with events on top, zones and masks in normalised coordinates,
 and MQTT entities for Home Assistant. It was written to fix two problems that kept coming up:
 
@@ -21,7 +23,7 @@ and MQTT entities for Home Assistant. It was written to fix two problems that ke
   change is treated as a lighting event. Places where "people" sit without ever moving are remembered
   and need stronger evidence later (`smartcam/static_map.py`).
 
-On one home's labelled Frigate history (305 cases), smartcam alerted on 252/252 real people with no
+On one home's labelled Frigate history (305 cases), SmartCam alerted on 252/252 real people with no
 false person alarms, against Frigate's 237/252 with 6.
 
 ## Running with Docker (Linux, NVIDIA GPU)
@@ -42,7 +44,7 @@ Prerequisites: the NVIDIA driver (>= 525) and the NVIDIA Container Toolkit, so t
 3. Check the log for `on CUDAExecutionProvider`, then open `http://<host>:8971`.
 
 Without an Intel iGPU, drop the `/dev/dri` device and set `detect.hwaccel: none`. Run only one
-smartcam per set of cameras: two would fight over the lights and the MQTT client id.
+SmartCam per set of cameras: two would fight over the lights and the MQTT client id.
 
 ## Running on a Mac (development)
 
@@ -50,7 +52,7 @@ smartcam per set of cameras: two would fight over the lights and the MQTT client
 scripts/setup_mac.sh            # Homebrew tools, go2rtc, Coral runtime, venv
 cp config/smartcam.example.yml config/smartcam.yml
 cp .env.example .env            # camera / MQTT / HA credentials (never committed)
-uv run python -m smartcam       # go2rtc + recording + detection + web UI
+uv run python -m SmartCam       # go2rtc + recording + detection + web UI
 ```
 
 Detection uses YOLO11 exported to ONNX (`models/`, not in git); on Apple Silicon it runs through
@@ -67,7 +69,7 @@ Run the tests with `uv run pytest`.
 
 The repository is also a Home Assistant add-on repository. Add
 `https://github.com/ulfendk/smart-camera-home` under Settings → Add-ons → Add-on Store → ⋮ →
-Repositories, install **SmartCam**, and set `server` to your smartcam address (for example
+Repositories, install **SmartCam**, and set `server` to your SmartCam address (for example
 `http://192.168.1.10:8971`). The UI then opens in the sidebar behind Home Assistant's login, live view
 included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 
@@ -78,6 +80,8 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   snapshot, and a restart to apply. Saving keeps the file's comments and `${VAR}` references, and
   literal passwords are never sent to the browser.
 - go2rtc on port 1984 restreams every camera as `<camera>` (main) and `<camera>_sub`.
+- Live cameras in Home Assistant: switch on "Share streams on the LAN" and set SmartCam's address under
+  Settings → Home Assistant, then press "Add live cameras to Home Assistant" (`camera.smartcam_<name>`).
 - Home Assistant, with `mqtt` enabled: `switch.smartcam_away`, plus a person sensor and a snapshot
   camera per camera. With `ha` enabled: push notifications through `notify.mobile_app_*`, each with
   its own snapshot.
@@ -145,13 +149,14 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 
 ## Roadmap
 
-- Siren for cameras that refuse the siren command (e.g. by switching on the camera's own "play
-  alarm sound" event rule while the alarm is active)
-- Live camera streams in Home Assistant dashboards (go2rtc on the LAN)
+- High-priority push notifications for alarms (time-sensitive / critical on iOS, high priority on Android)
+- Work alongside an existing Home Assistant alarm setup: input_boolean-based arming, presence
+  simulation and keypads
 - Speed events for passing vehicles: estimated speed from a per-camera calibration (two road
   marks a known distance apart), with the best full-resolution shot of the vehicle, its licence
   plate and, where visible, the driver
-- Rebrand as an alarm system for Home Assistant (working title "SmartCam Alarm")
+- Siren for cameras that refuse the siren command (e.g. by switching on the camera's own "play
+  alarm sound" event rule while the alarm is active)
 - Coral USB as a fast first pass in front of the GPU
 
 ## License

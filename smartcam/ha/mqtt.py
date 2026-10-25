@@ -27,7 +27,7 @@ def alert_slot(cfg: Config, event_id: int) -> int:
 
 def discovery_messages(cfg: Config) -> list[tuple[str, dict]]:
     p, d = cfg.mqtt.topic_prefix, cfg.mqtt.discovery_prefix
-    device = {"identifiers": ["smartcam"], "name": "Smartcam", "manufacturer": "smart-camera-home"}
+    device = {"identifiers": ["smartcam"], "name": "SmartCam", "manufacturer": "smart-camera-home"}
     avail = {"availability_topic": f"{p}/available"}
     msgs = [(f"{d}/switch/smartcam/away/config", {
         "name": "Away", "unique_id": "smartcam_away", "default_entity_id": "switch.smartcam_away", "icon": "mdi:home-export-outline",

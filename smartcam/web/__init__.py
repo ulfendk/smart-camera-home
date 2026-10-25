@@ -49,7 +49,7 @@ class CollapseSlashes:
 
 def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.Event | None = None,
                alarm=None) -> FastAPI:
-    app = FastAPI(title="smartcam")
+    app = FastAPI(title="SmartCam")
     app.add_middleware(CollapseSlashes)
     for sub in ("recordings", "snapshots", "clips"):
         (cfg.paths.data / sub).mkdir(parents=True, exist_ok=True)
