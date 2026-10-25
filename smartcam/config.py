@@ -44,7 +44,7 @@ class CameraConfig(BaseModel):
     zones: dict[str, list[tuple[float, float]]] = {}
     person_mask: list[tuple[float, float]] | None = None
     motion_mask: list[tuple[float, float]] | None = None
-    power_switch: str | None = None   # HA switch powering the camera; cycled when its stream dies (needs ha)
+    power_switch: str | None = None   # HA switch powering the camera, cycled when its stream dies (Dahua: rebooted)
 
     @field_validator("zones", mode="before")
     @classmethod

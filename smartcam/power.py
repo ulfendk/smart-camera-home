@@ -1,13 +1,16 @@
-"""Power-cycle a camera whose stream has died, through a Home Assistant switch (smart plug).
+"""Restart a camera whose stream has died.
 
-Some cheap cameras lock up and only recover after losing power. A camera with `power_switch` set is
-switched off and on again once its detection stream has delivered no frames for `stale_seconds`,
-at most `max_per_day` times and never within `cooldown_minutes` of the last cycle.
+Some cameras lock up and only recover after a restart. Once a camera's detection stream has delivered
+no frames for `stale_seconds`, it is restarted, at most `max_per_day` times and never within
+`cooldown_minutes` of the last restart:
+- with `power_switch` set: the Home Assistant switch (a smart plug) is switched off and on again
+- otherwise a Dahua camera is rebooted through its own HTTP API
 """
 
 import asyncio
 import logging
 import time
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic import BaseModel
@@ -28,9 +31,13 @@ class PowerWatchdog:
     def __init__(self, cfg: Config, wd: WatchdogConfig | None = None, now: float | None = None):
         self.cfg, self.wd = cfg, wd or WatchdogConfig(**cfg.watchdog)
         now = time.monotonic() if now is None else now
-        self.switches = {name: cam.power_switch for name, cam in cfg.cameras.items() if cam.power_switch}
-        self.last_frame = {name: now for name in self.switches}
-        self.cycles: dict[str, list[float]] = {name: [] for name in self.switches}
+        self.switches = {name: cam.power_switch for name, cam in cfg.cameras.items()
+                         if cam.power_switch and cfg.ha.enabled}
+        self.dahua = {name: cam for name, cam in cfg.cameras.items()
+                      if cam.vendor == "dahua" and name not in self.switches}
+        watched = [*self.switches, *self.dahua]
+        self.last_frame = {name: now for name in watched}
+        self.cycles: dict[str, list[float]] = {name: [] for name in watched}
 
     def seen(self, camera: str, now: float | None = None) -> None:
         if camera in self.last_frame:
@@ -56,27 +63,39 @@ class PowerWatchdog:
         r = await http.post(f"/api/services/switch/{service}", json={"entity_id": entity})
         r.raise_for_status()
 
-    async def cycle(self, http: httpx.AsyncClient, camera: str) -> None:
-        entity = self.switches[camera]
+    async def _reboot_dahua(self, camera: str) -> None:
+        cam = self.dahua[camera]
+        url = urlsplit(cam.record)
+        async with httpx.AsyncClient(auth=httpx.DigestAuth(url.username, url.password), timeout=10) as http:
+            r = await http.get(f"http://{cam.ip}/cgi-bin/magicBox.cgi?action=reboot")
+            r.raise_for_status()
+            if "OK" not in r.text:
+                raise httpx.HTTPError(f"unexpected reply: {r.text.strip()[:100]}")
+
+    async def cycle(self, ha: httpx.AsyncClient | None, camera: str) -> None:
         now = time.monotonic()
         self.cycles[camera].append(now)
         silent = now - self.last_frame[camera]
-        log.warning("%s: no frames for %.0fs; power-cycling %s (%d today)",
-                    camera, silent, entity, len(self.cycles[camera]))
+        how = f"power-cycling {self.switches[camera]}" if camera in self.switches else "rebooting it"
+        log.warning("%s: no frames for %.0fs; %s (%d today)", camera, silent, how, len(self.cycles[camera]))
         try:
-            await self._switch(http, "turn_off", entity)
-            await asyncio.sleep(self.wd.off_seconds)
-            await self._switch(http, "turn_on", entity)
+            if camera in self.switches:
+                await self._switch(ha, "turn_off", self.switches[camera])
+                await asyncio.sleep(self.wd.off_seconds)
+                await self._switch(ha, "turn_on", self.switches[camera])
+            else:
+                await self._reboot_dahua(camera)
         except httpx.HTTPError as e:
-            log.error("%s: power cycle via %s failed: %s", camera, entity, e)
+            log.error("%s: restart failed: %s", camera, e)
         if len(self.cycles[camera]) >= self.wd.max_per_day:
             log.error("%s: power-cycled %d times in 24h; giving up until tomorrow", camera, self.wd.max_per_day)
 
     async def run(self) -> None:
         async with httpx.AsyncClient(base_url=self.cfg.ha.url, timeout=15,
-                                     headers={"Authorization": f"Bearer {self.cfg.ha.token}"}) as http:
-            log.info("power watchdog for %s", ", ".join(f"{c} ({s})" for c, s in self.switches.items()))
+                                     headers={"Authorization": f"Bearer {self.cfg.ha.token}"}) as ha:
+            log.info("stream watchdog: %s", ", ".join(
+                [f"{c} (power {s})" for c, s in self.switches.items()] + [f"{c} (reboot)" for c in self.dahua]))
             while True:
                 for camera in self.due():
-                    await self.cycle(http, camera)
+                    await self.cycle(ha, camera)
                 await asyncio.sleep(15)

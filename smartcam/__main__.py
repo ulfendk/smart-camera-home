@@ -25,9 +25,9 @@ async def main() -> None:
         from .ha.notify import HaNotifier
         HaNotifier(cfg, engine)
     watchdog = None
-    if cfg.ha.enabled and any(cam.power_switch for cam in cfg.cameras.values()):
-        from .power import PowerWatchdog
-        watchdog = PowerWatchdog(cfg)
+    from .power import PowerWatchdog
+    if (wd := PowerWatchdog(cfg)).last_frame:   # any camera it can restart
+        watchdog = wd
     server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine), host="0.0.0.0", port=cfg.web.port,
                                            log_level="warning", lifespan="off"))  # no startup hooks
     async with asyncio.TaskGroup() as tg:

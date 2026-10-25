@@ -130,8 +130,13 @@ site/              the project website (GitHub Pages)
 
 ## Roadmap
 
-- Configuration UI in the web app
 - Home Assistant add-on / ingress proxy, so the UI opens inside Home Assistant
+- Configuration UI in the web app
+- Alarm mode: arm/disarm from Home Assistant; when triggered, the Dahua red/blue warning lights
+  flash for 10-15 minutes and the siren sounds in bursts (e.g. 10 s on, a pause, a few rounds),
+  then everything stays off until disarmed and triggered again
+- Live camera streams in Home Assistant dashboards (go2rtc on the LAN)
+- Rebrand as an alarm system for Home Assistant (working title "SmartCam Alarm")
 - Coral USB as a fast first pass in front of the GPU
 
 ## License
