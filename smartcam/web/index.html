@@ -277,7 +277,7 @@ const CAMERA_FIELDS = [
   ["vendor", "Vendor", "select", "generic", "dahua enables the white light and reboots", ["generic", "dahua"]],
   ["ip", "IP address", "text", ""],
   ["record", "Recording stream", "text", "", "main stream, e.g. rtsp://${CAM_USER}:${CAM_PASS}@{ip}:554/live", null, true],
-  ["detect", "Detection stream", "text", "", "sub stream", null, true],
+  ["detect", "Detection stream", "text", "", "sub stream; the same as the recording stream = one connection to the camera", null, true],
   ["power_switch", "Power switch", "text", "", "HA switch powering the camera, e.g. switch.camera_plug"],
 ];
 

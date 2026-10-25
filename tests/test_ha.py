@@ -47,3 +47,12 @@ def test_go2rtc_api_is_local_and_lan_rtsp_has_a_password():
     cfg.go2rtc.rtsp_lan, cfg.go2rtc.rtsp_password = True, "s3cret"
     assert go2rtc_config(cfg)["rtsp"] == {"listen": ":8554", "username": "smartcam", "password": "s3cret"}
     assert cfg.go2rtc.restream("x") == "rtsp://smartcam:s3cret@127.0.0.1:8554/x"
+
+
+def test_detect_same_as_record_uses_one_camera_connection():
+    from smartcam.go2rtc import go2rtc_config
+    cfg = load_config(TEST_CONFIG)
+    cam = cfg.cameras["living_room"]
+    cam.detect = cam.record
+    streams = go2rtc_config(cfg)["streams"]
+    assert streams["living_room_sub"] == ["rtsp://127.0.0.1:8554/living_room"]

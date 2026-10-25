@@ -14,7 +14,9 @@ def go2rtc_config(cfg: Config) -> dict:
     streams = {}
     for name, cam in cfg.cameras.items():
         streams[name] = [cam.record]
-        streams[f"{name}_sub"] = [cam.detect]
+        # detect == record: feed detection from the main restream, so the camera keeps one connection
+        # (some cameras cannot serve two streams reliably). Detection scales the frames down anyway.
+        streams[f"{name}_sub"] = [cfg.go2rtc.restream(name) if cam.detect == cam.record else cam.detect]
     g = cfg.go2rtc
     rtsp = {"listen": f"{'' if g.rtsp_lan else '127.0.0.1'}:{g.rtsp_port}"}
     if g.rtsp_password:
