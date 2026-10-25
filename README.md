@@ -85,6 +85,9 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 - Home Assistant, with `mqtt` enabled: `switch.smartcam_away`, plus a person sensor and a snapshot
   camera per camera. With `ha` enabled: push notifications through `notify.mobile_app_*`, each with
   its own snapshot.
+- Existing alarm setup: with `ha.alarm_entity` (e.g. an `input_boolean.alarm` that a keypad and scripts
+  set), SmartCam arms and disarms with it, and arming SmartCam sets it, so keypads, locks and presence
+  simulation stay in step. `ha.away_entity` does the same for away mode.
 - Vehicle speed: draw Speed line A and B across the road in a camera's zone editor and enter the distance
   between them. Each passing vehicle becomes an event with its speed, a full-resolution best shot and a
   close-up for the plate and driver; `sensor.smartcam_<camera>_vehicle_speed` in Home Assistant, and a push
@@ -153,8 +156,6 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 
 ## Roadmap
 
-- Work alongside an existing Home Assistant alarm setup: input_boolean-based arming, presence
-  simulation and keypads
 - Reading licence plates (OCR) on speed events
 - Siren for cameras that refuse the siren command (e.g. by switching on the camera's own "play
   alarm sound" event rule while the alarm is active)

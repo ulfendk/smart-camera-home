@@ -31,9 +31,13 @@ async def main() -> None:
     if cfg.mqtt.enabled:
         from .ha.mqtt import HaMqtt
         mqtt = HaMqtt(cfg, engine, alarm)
+    link = None
     if cfg.ha.enabled:
         from .ha.notify import HaNotifier
         HaNotifier(cfg, engine, alarm)
+        if cfg.ha.alarm_entity or cfg.ha.away_entity:
+            from .ha.link import HaLink
+            link = HaLink(cfg, engine, alarm)
     watchdog = None
     from .power import PowerWatchdog
     if (wd := PowerWatchdog(cfg)).last_frame:   # any camera it can restart
@@ -55,6 +59,8 @@ async def main() -> None:
             tg.create_task(server.serve())
             if cfg.mqtt.enabled:
                 tg.create_task(mqtt.run())
+            if link is not None:
+                tg.create_task(link.run())
             tg.create_task(_restart_on(restart))
     finally:
         if alarm is not None:

@@ -242,6 +242,8 @@ const SECTIONS = [
     ["ha.token", "Long-lived access token", "password", "", "HA profile → Security"],
     ["ha.notify", "Notify services", "list", [], "e.g. mobile_app_my_phone, comma-separated"],
     ["ha.alarm_critical", "Alarm as critical alert", "bool", false, "iOS: overrides silent mode (allow critical alerts for the app)"],
+    ["ha.alarm_entity", "Follow alarm entity", "text", "", "arm and disarm together with e.g. input_boolean.alarm (keypad, scripts), both ways"],
+    ["ha.away_entity", "Follow away entity", "text", "", "away mode together with e.g. input_boolean.away, both ways"],
     ["go2rtc.rtsp_lan", "Share streams on the LAN", "bool", false, "password-protected RTSP restreams, needed for live cameras in Home Assistant"],
     ["ha.smartcam_host", "SmartCam address for Home Assistant", "text", "", "this machine's IP or hostname, e.g. 192.168.1.10"],
   ], ha: true},
