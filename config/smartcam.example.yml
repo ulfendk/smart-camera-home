@@ -14,6 +14,12 @@ cameras:
     detect: *dahua_sub         # sub stream: decoded for detection
     zones:
       door: [0.6,0.4, 1,0.4, 1,1, 0.6,1]
+    speed:                     # optional: vehicle speed between two lines across the road
+      line_a: [0.20, 0.30, 0.25, 0.45]
+      line_b: [0.55, 0.20, 0.60, 0.32]
+      distance_m: 15           # measured along the road
+      limit_kmh: 30
+      notify_over_kmh: 50
 
   driveway:
     location: outdoor

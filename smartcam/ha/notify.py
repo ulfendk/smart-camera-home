@@ -6,6 +6,7 @@ import httpx
 
 from ..config import Config
 from ..events import EventEngine
+from ..speed import SpeedConfig
 from .mqtt import alert_slot
 
 log = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ class HaNotifier:
         engine.on_clip.append(self.clip)
         if alarm is not None:
             alarm.on_trigger.append(self.alarm)
+        engine.on_speed.append(self.speed)
 
     async def _send(self, payload: dict) -> None:
         for service in self.cfg.ha.notify:
@@ -67,6 +69,16 @@ class HaNotifier:
     async def alert(self, event: dict) -> None:
         await self._send(alert_payload(self.cfg, event))
         log.info("notified event %d", event["id"])
+
+    async def speed(self, event: dict) -> None:
+        sc = SpeedConfig(**(self.cfg.cameras[event["camera"]].speed or {}))
+        if sc.notify_over_kmh is None or event["speed"] < sc.notify_over_kmh:
+            return
+        p = alert_payload(self.cfg, event)
+        limit = f" (limit {sc.limit_kmh:.0f})" if sc.limit_kmh else ""
+        p["title"] = f"🚗 {event['speed']:.0f} km/h at {event['camera']}"
+        p["message"] = f"{event['label']} {event['reasons'][-1]}{limit}"
+        await self._send(p)
 
     async def alarm(self, why: str, event: dict | None) -> None:
         await self._send(alarm_payload(self.cfg, why, event))

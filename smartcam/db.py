@@ -34,6 +34,11 @@ class Database:
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        for column, kind in (("speed", "real"), ("crop", "text")):   # added after the first release
+            try:
+                self.conn.execute(f"alter table events add column {column} {kind}")
+            except sqlite3.OperationalError:
+                pass  # already there
         self.lock = threading.Lock()
 
     def _row(self, row: sqlite3.Row | None) -> dict | None:

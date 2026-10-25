@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 from pydantic import BaseModel
 
-from .clips import cut_clip
+from .clips import cut_clip, frame_at
 from .config import Config
 from .db import Database
 from .pipeline import FrameResult
@@ -114,6 +114,7 @@ class EventEngine:
         self.on_clip: list[Notifier] = []
         self.on_away: list[Callable[[bool], Awaitable[None]]] = []
         self.on_score: list[Callable[[OpenEvent], Awaitable[None]]] = []   # when an event's score rises
+        self.on_speed: list[Notifier] = []   # a vehicle speed event, once its best shot is in
         self.snapshots = cfg.paths.data / "snapshots"
         self.clips = cfg.paths.data / "clips"
 
@@ -257,6 +258,54 @@ class EventEngine:
         if event["notified"]:
             for notify in self.on_clip:
                 await self._safe(notify, event)
+
+    async def record_speed(self, r, frame) -> int:
+        """A vehicle speed reading becomes an event: snapshot now, best shot and clip once recorded."""
+        ev_id = self.db.insert_event(camera=r.camera, label=r.label, start_ts=r.t_a if r.t_a < r.t_b else r.t_b,
+                                     max_score=r.score)
+        self.db.update_event(ev_id, end_ts=max(r.t_a, r.t_b), speed=r.kmh,
+                             reasons=[f"{r.kmh:.0f} km/h", r.direction])
+        img = frame.image.copy()
+        h, w = img.shape[:2]
+        x1, y1, x2, y2 = (int(v * s) for v, s in zip(r.box, (w, h, w, h)))
+        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+        cv2.putText(img, f"{r.kmh:.0f} km/h", (x1, max(y1 - 8, 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+        path = self.snapshots / f"{ev_id}.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(path), img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        self.db.update_event(ev_id, snapshot=str(path.relative_to(self.cfg.paths.data)))
+        log.info("event %d: %s on %s at %.0f km/h (%s)", ev_id, r.label, r.camera, r.kmh, r.direction)
+        task = asyncio.create_task(self._speed_media(ev_id, r))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return ev_id
+
+    async def _speed_media(self, ev_id: int, r) -> None:
+        """Best shot from the full-resolution recording, a close crop for the plate and driver, the clip."""
+        mid = (r.t_a + r.t_b) / 2
+        await asyncio.sleep(max(0.0, mid + self.cfg.record.segment_seconds + 3 - time.time()))
+        full = self.snapshots / f"{ev_id}_full.jpg"
+        try:
+            if await asyncio.to_thread(frame_at, self.cfg, r.camera, mid, full):
+                img = cv2.imread(str(full))
+                h, w = img.shape[:2]
+                x1, y1, x2, y2 = r.box
+                mx, my = (x2 - x1) * 0.15, (y2 - y1) * 0.15
+                crop = img[max(int((y1 - my) * h), 0):min(int((y2 + my) * h), h), max(int((x1 - mx) * w), 0):min(int((x2 + mx) * w), w)]
+                crop_path = self.snapshots / f"{ev_id}_vehicle.jpg"
+                cv2.imwrite(str(crop_path), crop, [cv2.IMWRITE_JPEG_QUALITY, 92])
+                cv2.rectangle(img, (int(x1 * w), int(y1 * h)), (int(x2 * w), int(y2 * h)), (0, 0, 255), 3)
+                cv2.putText(img, f"{r.kmh:.0f} km/h", (int(x1 * w), max(int(y1 * h) - 12, 40)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.6, (0, 0, 255), 3)
+                cv2.imwrite(str(full), img, [cv2.IMWRITE_JPEG_QUALITY, 88])
+                self.db.update_event(ev_id, snapshot=str(full.relative_to(self.cfg.paths.data)),
+                                     crop=str(crop_path.relative_to(self.cfg.paths.data)))
+        except Exception:
+            log.exception("best shot for speed event %d failed", ev_id)
+        event = self.db.event(ev_id)
+        for cb in self.on_speed:
+            await self._safe(cb, event)
+        await self._make_clip(ev_id, r.camera, min(r.t_a, r.t_b) - 2, max(r.t_a, r.t_b) + 2)
 
     @staticmethod
     async def _safe(notify: Notifier, event: dict) -> None:

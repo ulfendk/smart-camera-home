@@ -113,6 +113,7 @@ class Settings:
         from .events import RulesConfig
         from .lights.controller import LightsConfig
         from .power import WatchdogConfig
+        from .speed import SpeedConfig
 
         with tempfile.NamedTemporaryFile("w", suffix=".yml", dir=self.path.parent, delete=False) as f:
             f.write(text)
@@ -122,6 +123,8 @@ class Settings:
             LightsConfig(**cfg.lights)
             WatchdogConfig(**cfg.watchdog)
             AlarmConfig(**cfg.alarm)
+            for cam in cfg.cameras.values():
+                SpeedConfig(**(cam.speed or {}))
         except Exception as e:
             raise ValueError(str(e)) from e
         finally:

@@ -12,6 +12,7 @@ from .lights.controller import LightController, LightsConfig
 from .lights.dahua import DahuaLight
 from .pipeline import CameraPipeline
 from .power import PowerWatchdog
+from .speed import SpeedConfig, SpeedMeter
 from .static_map import StaticMap
 
 log = logging.getLogger(__name__)
@@ -46,6 +47,8 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
     slot: asyncio.Queue[Frame] = asyncio.Queue(maxsize=1)
     reader = asyncio.create_task(_latest(cfg, cam.name, slot))
     light = await make_light(cfg, cam)
+    speed = SpeedConfig(**(cam.speed or {}))
+    meter = SpeedMeter(cam.name, speed) if speed.ready else None
     last_save = 0.0
     stats = {"frames": 0, "detects": 0, "busy": 0.0, "since": time.monotonic()}
     try:
@@ -64,6 +67,9 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
                          1000 * stats["busy"] / max(stats["frames"], 1), len(res.tracks))
                 stats = {"frames": 0, "detects": 0, "busy": 0.0, "since": time.monotonic()}
             await engine.handle(res)
+            if meter is not None:
+                for reading in meter.update(res.tracks):
+                    await engine.record_speed(reading, frame)
             if light is not None:
                 await light.handle(res, pipeline.confirmed_ids)
             if frame.ts - last_save > 600:

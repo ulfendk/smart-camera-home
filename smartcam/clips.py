@@ -8,6 +8,19 @@ from .config import Config
 from .recorder import segment_start, segments
 
 
+def frame_at(cfg: Config, camera: str, ts: float, out: Path) -> Path | None:
+    """A full-resolution still from the recording at `ts` (the main stream), or None."""
+    segs = segments(cfg, camera, ts, ts + 0.01)
+    if not segs:
+        return None
+    out.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{max(ts - segment_start(segs[0]), 0):.2f}",
+         "-i", str(segs[0]), "-frames:v", "1", "-q:v", "2", str(out)],
+        check=True, capture_output=True, timeout=60)
+    return out if out.exists() else None
+
+
 def cut_clip(cfg: Config, camera: str, start: float, end: float, out: Path) -> Path | None:
     """Write [start, end] of a camera's recording to `out`. Returns None if no footage covers it.
 

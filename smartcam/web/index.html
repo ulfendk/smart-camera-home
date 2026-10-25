@@ -186,7 +186,7 @@ async function loadEvents() {
     const dur = e.end_ts ? `${Math.round(e.end_ts - e.start_ts)}s` : "ongoing";
     fig.innerHTML = `${media}
       <figcaption>
-        <span><b>${esc(e.camera)}</b> ${esc(e.label)} <small>${fmt(e.start_ts)} · ${dur}</small></span>
+        <span><b>${esc(e.camera)}</b> ${esc(e.label)}${e.speed != null ? ` <b>${Math.round(e.speed)} km/h</b>` : ""} <small>${fmt(e.start_ts)} · ${dur}</small>${e.crop ? ` <a href="media/${e.crop}" target="_blank">vehicle close-up</a>` : ""}</span>
         <span class="score ${e.score >= 4 ? "high" : ""}" title="${esc(e.reasons.join(", "))}">score ${e.score}${e.notified ? " · notified" : ""}</span>
       </figcaption>
       <figcaption><small>${esc(e.reasons.join(" · "))}</small>
@@ -280,6 +280,9 @@ const CAMERA_FIELDS = [
   ["record", "Recording stream", "text", "", "main stream, e.g. rtsp://${CAM_USER}:${CAM_PASS}@{ip}:554/live", null, true],
   ["detect", "Detection stream", "text", "", "sub stream; the same as the recording stream = one connection to the camera", null, true],
   ["power_switch", "Power switch", "text", "", "HA switch powering the camera, e.g. switch.camera_plug"],
+  ["speed.distance_m", "Speed: distance between the lines (m)", "number", "", "draw Speed line A and B under Zones & masks"],
+  ["speed.limit_kmh", "Speed limit (km/h)", "number", ""],
+  ["speed.notify_over_kmh", "Notify from (km/h)", "number", "", "push notification for vehicles at or above this speed"],
 ];
 
 const getPath = (obj, path) => path.split(".").reduce((o, k) => o?.[k], obj);
@@ -435,13 +438,17 @@ const toPoints = flat => { const p = []; for (let i = 0; i + 1 < (flat || []).le
 const toFlat = pts => pts.flatMap(([x, y]) => [Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000]);
 const isFlat = v => Array.isArray(v) && v.every(n => typeof n === "number");
 const normalise = v => isFlat(v) ? toPoints(v) : (v || []).map(p => [p[0], p[1]]);
-const LAYER_COLORS = {person_mask: "#db4437", motion_mask: "#ff9800"};
+const LAYER_COLORS = {person_mask: "#db4437", motion_mask: "#ff9800", speed_a: "#43a047", speed_b: "#8e24aa"};
+const LINES = ["speed_a", "speed_b"];   // two-point lines, not polygons
+const LAYER_NAMES = {person_mask: "Person mask", motion_mask: "Motion mask", speed_a: "Speed line A", speed_b: "Speed line B"};
 
 function zoneEditor(root, name, cam) {
   const layers = {};
   for (const [z, poly] of Object.entries(cam.zones || {})) layers["zone:" + z] = normalise(poly);
   layers.person_mask = normalise(cam.person_mask);
   layers.motion_mask = normalise(cam.motion_mask);
+  layers.speed_a = normalise(cam.speed?.line_a);
+  layers.speed_b = normalise(cam.speed?.line_b);
   let active = Object.keys(layers)[0], dragging = null;
 
   root.innerHTML = `
@@ -451,7 +458,7 @@ function zoneEditor(root, name, cam) {
       <input placeholder="new zone name"><button class="chip" data-act="add">Add zone</button>
       <button class="chip" data-act="undo">Undo point</button><button class="chip" data-act="clear">Clear</button>
       <button class="chip" data-act="delete">Delete zone</button><button class="chip" data-act="refresh">New snapshot</button>
-      <small class="muted">Click to add points, drag to move them.</small>
+      <small class="muted">Click to add points, drag to move them. Speed lines: two clicks each, across the road where the wheels touch it.</small>
     </div>`;
   const canvas = root.querySelector("canvas"), img = root.querySelector("img"), ctx = canvas.getContext("2d");
   const chips = root.querySelector(".layers");
@@ -463,12 +470,17 @@ function zoneEditor(root, name, cam) {
     for (const m of ["person_mask", "motion_mask"]) {
       if (layers[m].length >= 3) cam[m] = toFlat(layers[m]); else delete cam[m];
     }
+    for (const [m, key] of [["speed_a", "line_a"], ["speed_b", "line_b"]]) {
+      if (layers[m].length === 2) (cam.speed ??= {})[key] = toFlat(layers[m]);
+      else if (cam.speed) delete cam.speed[key];
+    }
+    if (cam.speed && !Object.keys(cam.speed).length) delete cam.speed;
     dirty();
   }
 
   function renderChips() {
     chips.innerHTML = Object.keys(layers).map(k => {
-      const label = k.startsWith("zone:") ? k.slice(5) : k === "person_mask" ? "Person mask" : "Motion mask";
+      const label = k.startsWith("zone:") ? k.slice(5) : LAYER_NAMES[k];
       const color = LAYER_COLORS[k] || "#03a9f4";
       return `<button class="chip" data-layer="${esc(k)}" aria-pressed="${k === active}"><span class="legend" style="background:${color}"></span>${esc(label)}</button>`;
     }).join("");
@@ -485,6 +497,11 @@ function zoneEditor(root, name, cam) {
       const color = LAYER_COLORS[k] || "#03a9f4", on = k === active;
       ctx.beginPath();
       pts.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, x * r.width, y * r.height));
+      if (LINES.includes(k)) {
+        ctx.lineWidth = on ? 4 : 3; ctx.strokeStyle = color; ctx.stroke();
+        if (on) for (const [x, y] of pts) { ctx.beginPath(); ctx.arc(x * r.width, y * r.height, 5, 0, 7); ctx.fillStyle = "#fff"; ctx.fill(); ctx.stroke(); }
+        continue;
+      }
       ctx.closePath();
       ctx.fillStyle = color + (on ? "55" : "30"); ctx.fill();
       ctx.lineWidth = on ? 2.5 : 1.5; ctx.strokeStyle = color; ctx.stroke();
@@ -497,7 +514,9 @@ function zoneEditor(root, name, cam) {
     if (!active) return;
     const [x, y] = pos(e), r = canvas.getBoundingClientRect(), pts = layers[active];
     const near = pts.findIndex(([px, py]) => Math.hypot((px - x) * r.width, (py - y) * r.height) < 10);
-    if (near >= 0) dragging = near; else { pts.push([x, y]); commit(); }
+    if (near >= 0) dragging = near;
+    else if (LINES.includes(active) && pts.length >= 2) return;   // a line has two ends
+    else { pts.push([x, y]); commit(); }
     canvas.setPointerCapture(e.pointerId); draw();
   };
   canvas.onpointermove = e => { if (dragging !== null) { layers[active][dragging] = pos(e); draw(); } };

@@ -43,6 +43,14 @@ def discovery_messages(cfg: Config) -> list[tuple[str, dict]]:
         "name": "Alarm", "unique_id": "smartcam_alarm", "default_entity_id": "alarm_control_panel.smartcam_alarm",
         "state_topic": f"{p}/alarm/state", "command_topic": f"{p}/alarm/set", "supported_features": ["arm_away"],
         "code_arm_required": False, "code_disarm_required": False, "device": device, **avail}))
+    for name, cam in cfg.cameras.items():
+        if cam.speed:
+            msgs.append((f"{d}/sensor/smartcam/{name}_vehicle_speed/config", {
+                "name": f"{name} vehicle speed", "unique_id": f"smartcam_{name}_vehicle_speed",
+                "default_entity_id": f"sensor.smartcam_{name}_vehicle_speed", "unit_of_measurement": "km/h",
+                "device_class": "speed", "state_class": "measurement", "state_topic": f"{p}/{name}/vehicle_speed",
+                "json_attributes_topic": f"{p}/{name}/vehicle_speed/attributes", "icon": "mdi:car-speed-limiter",
+                "device": device, **avail}))
     for n in range(1, cfg.mqtt.alert_slots + 1):
         msgs.append((f"{d}/camera/smartcam/alert_{n}/config", {
             "name": f"alert {n}", "unique_id": f"smartcam_alert_{n}", "default_entity_id": f"camera.smartcam_alert_{n}",
@@ -61,6 +69,7 @@ class HaMqtt:
         engine.on_alert.insert(0, self._publish_alert_image)
         engine.on_clip.insert(0, self._publish_alert_image)
         engine.on_away.append(self._publish_away)
+        engine.on_speed.insert(0, self._publish_speed)   # before the notifier, which shows its image
         if alarm is not None:
             alarm.on_state.append(self._publish_alarm)
 
@@ -97,6 +106,13 @@ class HaMqtt:
     async def _publish(self, topic: str, payload, retain: bool = True) -> None:
         if self.client is not None:
             await self.client.publish(f"{self.cfg.mqtt.topic_prefix}/{topic}", payload, retain=retain)
+
+    async def _publish_speed(self, event: dict) -> None:
+        cam = event["camera"]
+        await self._publish(f"{cam}/vehicle_speed/attributes", json.dumps(
+            {"label": event["label"], "event_id": event["id"], "direction": event["reasons"][-1], "at": event["start_ts"]}))
+        await self._publish(f"{cam}/vehicle_speed", str(event["speed"]))
+        await self._publish_alert_image(event)
 
     async def _publish_alarm(self, state: str) -> None:
         await self._publish("alarm/state", state)

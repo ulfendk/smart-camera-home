@@ -46,6 +46,7 @@ class CameraConfig(BaseModel):
     person_mask: list[tuple[float, float]] | None = None
     motion_mask: list[tuple[float, float]] | None = None
     power_switch: str | None = None   # HA switch powering the camera, cycled when its stream dies (Dahua: rebooted)
+    speed: dict | None = None         # vehicle speed calibration, validated by speed.SpeedConfig
 
     @field_validator("zones", mode="before")
     @classmethod

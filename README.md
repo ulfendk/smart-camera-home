@@ -85,6 +85,10 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 - Home Assistant, with `mqtt` enabled: `switch.smartcam_away`, plus a person sensor and a snapshot
   camera per camera. With `ha` enabled: push notifications through `notify.mobile_app_*`, each with
   its own snapshot.
+- Vehicle speed: draw Speed line A and B across the road in a camera's zone editor and enter the distance
+  between them. Each passing vehicle becomes an event with its speed, a full-resolution best shot and a
+  close-up for the plate and driver; `sensor.smartcam_<camera>_vehicle_speed` in Home Assistant, and a push
+  from a chosen speed.
 - Alarm mode: `alarm_control_panel.smartcam_alarm` in Home Assistant. Arming switches on away mode;
   a serious event while armed (by default a person indoors, or loitering at a door at night) flashes
   the Dahua red/blue warning lights for 15 minutes, then stays quiet until disarmed and armed again.
@@ -151,9 +155,7 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 
 - Work alongside an existing Home Assistant alarm setup: input_boolean-based arming, presence
   simulation and keypads
-- Speed events for passing vehicles: estimated speed from a per-camera calibration (two road
-  marks a known distance apart), with the best full-resolution shot of the vehicle, its licence
-  plate and, where visible, the driver
+- Reading licence plates (OCR) on speed events
 - Siren for cameras that refuse the siren command (e.g. by switching on the camera's own "play
   alarm sound" event rule while the alarm is active)
 - Coral USB as a fast first pass in front of the GPU

@@ -30,9 +30,12 @@ def _remove_hour(cfg: Config, hour_dir) -> None:
 
 
 def _remove_event(cfg: Config, db: Database, event: dict) -> None:
-    for key in ("clip", "snapshot"):
+    for key in ("clip", "snapshot", "crop"):
         if event.get(key):
             (cfg.paths.data / event[key]).unlink(missing_ok=True)
+    for extra in (cfg.paths.data / "snapshots").glob(f"{event['id']}_*.jpg"):   # speed events' best shots
+        extra.unlink(missing_ok=True)
+    (cfg.paths.data / "snapshots" / f"{event['id']}.jpg").unlink(missing_ok=True)
     db.delete_event(event["id"])
 
 
