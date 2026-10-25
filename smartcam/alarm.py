@@ -1,7 +1,11 @@
 """Alarm mode: arm from Home Assistant; when a serious event happens while armed, deter.
 
-States follow Home Assistant's alarm panel: disarmed, armed_away, triggered. Arming also switches on
-away mode (and disarming switches it off), so scoring and notifications follow the alarm.
+States follow Home Assistant's alarm panel: disarmed, arming, armed_away, pending, triggered.
+
+Arming waits `exit_delay` seconds ("arming") before the alarm and away mode become active, and only
+events that start after that can trigger, so nobody sets it off on the way out. A trigger first waits
+`entry_delay` seconds ("pending"), so coming home and disarming at the keypad cancels it. Disarming
+switches away mode off.
 
 When triggered: the outdoor Dahuas' red/blue warning lights come on for `light_minutes`, and, if
 `siren` is on, the sirens sound in rounds of `siren_on_seconds` with `siren_off_seconds` pauses. After
@@ -10,6 +14,7 @@ that the alarm goes quiet and does not trigger again until it is disarmed and ar
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from urllib.parse import urlsplit
 
@@ -22,12 +27,14 @@ from .lights.dahua_rpc import SIREN, WARNING_LIGHT, DahuaRpc
 
 log = logging.getLogger(__name__)
 
-DISARMED, ARMED, TRIGGERED = "disarmed", "armed_away", "triggered"
+DISARMED, ARMING, ARMED, PENDING, TRIGGERED = "disarmed", "arming", "armed_away", "pending", "triggered"
 
 
 class AlarmConfig(BaseModel):
     enabled: bool = True
     trigger_score: float = 8        # event score that triggers the alarm while armed (indoor person = 10)
+    exit_delay: float = 60          # seconds after arming before it is active (time to leave)
+    entry_delay: float = 30         # seconds between a trigger and the alarm going off (time to disarm)
     cameras: list[str] = []         # cameras whose deterrence is used; empty = every outdoor Dahua
     light_minutes: float = 15       # red/blue warning lights
     siren: bool = False             # many cameras refuse siren commands; switch on once tested
@@ -46,7 +53,8 @@ class Alarm:
         self.on_state: list[Callable[[str], Awaitable[None]]] = []
         self.on_trigger: list[Callable[[str, dict | None], Awaitable[None]]] = []   # (why, event)
         self.spent = self.db.get_setting("alarm_spent", "0") == "1"   # triggered once since arming
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task | None = None        # exit delay, entry delay or deterrence
+        self.armed_at = float(self.db.get_setting("alarm_armed_at", "0"))   # when it became active
         engine.on_score.append(self._scored)
 
     @property
@@ -63,8 +71,24 @@ class Alarm:
                 log.exception("alarm state callback failed")
 
     async def arm(self) -> None:
+        if self.state in (ARMING, ARMED, PENDING, TRIGGERED):
+            return
         self.spent = False
         self.db.set_setting("alarm_spent", "0")
+        if self.ac.exit_delay > 0:
+            await self._set_state(ARMING)
+            self._task = asyncio.create_task(self._after_exit_delay())
+        else:
+            await self._activate()
+
+    async def _after_exit_delay(self) -> None:
+        await asyncio.sleep(self.ac.exit_delay)
+        if self.state == ARMING:
+            await self._activate()
+
+    async def _activate(self) -> None:
+        self.armed_at = time.time()
+        self.db.set_setting("alarm_armed_at", str(self.armed_at))
         await self._set_state(ARMED)
         if not self.engine.away:
             await self.engine.set_away(True)
@@ -72,6 +96,7 @@ class Alarm:
     async def disarm(self) -> None:
         if self._task:
             self._task.cancel()
+            self._task = None
         await self._set_state(DISARMED)
         if self.engine.away:
             await self.engine.set_away(False)
@@ -85,12 +110,28 @@ class Alarm:
             await self.disarm()
 
     async def _scored(self, ev: OpenEvent) -> None:
-        if self.ac.enabled and self.state == ARMED and not self.spent and ev.score >= self.ac.trigger_score:
+        # Only activity that started after the alarm became active counts: not the people leaving.
+        if (self.ac.enabled and self.state == ARMED and not self.spent and ev.start >= self.armed_at
+                and ev.score >= self.ac.trigger_score):
             await self.trigger(f"{ev.camera}: {', '.join(r for r in ev.reasons if r != 'person')}", ev.id)
 
-    async def trigger(self, why: str = "manual", event_id: int | None = None) -> None:
+    async def trigger(self, why: str = "manual", event_id: int | None = None, delay: float | None = None) -> None:
         self.spent = True
         self.db.set_setting("alarm_spent", "1")
+        delay = self.ac.entry_delay if delay is None else delay
+        if delay > 0:
+            log.warning("alarm pending for %.0fs (%s)", delay, why)
+            await self._set_state(PENDING)
+            self._task = asyncio.create_task(self._after_entry_delay(why, event_id, delay))
+        else:
+            await self._go_off(why, event_id)
+
+    async def _after_entry_delay(self, why: str, event_id: int | None, delay: float) -> None:
+        await asyncio.sleep(delay)
+        if self.state == PENDING:
+            await self._go_off(why, event_id)
+
+    async def _go_off(self, why: str, event_id: int | None) -> None:
         log.warning("ALARM triggered (%s)", why)
         await self._set_state(TRIGGERED)
         self._task = asyncio.create_task(self._deter())
@@ -134,10 +175,14 @@ class Alarm:
         await self._all(WARNING_LIGHT, False)
 
     async def startup(self) -> None:
-        """After a restart in the middle of an alarm: make sure everything is off, stay armed (spent)."""
+        """After a restart: an alarm in progress is switched off (staying armed, spent); delays finish at once."""
         if self.state == TRIGGERED:
             await self._quiet()
             await self._set_state(ARMED)
+        elif self.state == PENDING:
+            await self._set_state(ARMED)
+        elif self.state == ARMING:
+            await self._activate()
 
     async def close(self) -> None:
         if self._task:

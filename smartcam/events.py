@@ -122,8 +122,14 @@ class EventEngine:
     def away(self) -> bool:
         return self.db.get_setting("away", "0") == "1"
 
+    @property
+    def away_since(self) -> float:
+        return float(self.db.get_setting("away_since", "0"))
+
     async def set_away(self, away: bool) -> None:
         self.db.set_setting("away", "1" if away else "0")
+        if away:
+            self.db.set_setting("away_since", str(time.time()))
         log.info("away mode %s", "on" if away else "off")
         for cb in self.on_away:
             try:
@@ -209,7 +215,9 @@ class EventEngine:
                     log.exception("score callback failed for event %d", ev.id)
         self.db.update_event(ev.id, score=ev.score, reasons=ev.reasons, zones=sorted(ev.zone_dwell),
                              max_score=ev.best_score)
-        if not ev.notified and should_notify(ev, self.away, now, self.rules):
+        # While away, only activity that started after away mode began is news (not the people leaving).
+        fresh = not self.away or ev.start >= self.away_since
+        if not ev.notified and fresh and should_notify(ev, self.away, now, self.rules):
             ev.notified = True
             self.db.update_event(ev.id, notified=1)
             event = self.db.event(ev.id)

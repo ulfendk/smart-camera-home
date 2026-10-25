@@ -25,7 +25,7 @@ def test_follows_home_assistant_and_reports_back_without_echo():
         cfg.ha.alarm_entity = "input_boolean.alarm"
         db = Database(cfg.paths.data / "t.db")
         engine = EventEngine(cfg, db, RulesConfig())
-        alarm = Alarm(cfg, db, engine, AlarmConfig(), outputs={})
+        alarm = Alarm(cfg, db, engine, AlarmConfig(exit_delay=0, entry_delay=0), outputs={})
         link = HaLink(cfg, engine, alarm)
         sent = []
 

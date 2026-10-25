@@ -26,7 +26,8 @@
   nav button[aria-pressed="true"] { color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
   .away { margin-left: auto; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: var(--muted); font-weight: 500; }
   .alarm { font: inherit; font-weight: 500; padding: 6px 14px; border-radius: 16px; border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; }
-  .alarm[data-state="armed_away"] { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .alarm[data-state="armed_away"], .alarm[data-state="arming"] { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .alarm[data-state="pending"] { color: #fff; background: var(--warn); border-color: var(--warn); }
   .alarm[data-state="triggered"] { color: #fff; background: var(--error); border-color: var(--error); animation: pulse 1s infinite; }
   @keyframes pulse { 50% { opacity: .6; } }
   main { padding: 16px; max-width: 1400px; margin: 0 auto; }
@@ -143,7 +144,7 @@ $("away").onclick = toggleAway;
 $("away").onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleAway(); } };
 
 // --- alarm -----------------------------------------------------------------------------------------
-const ALARM_LABEL = {disarmed: "Alarm off", armed_away: "Alarm armed", triggered: "ALARM"};
+const ALARM_LABEL = {disarmed: "Alarm off", arming: "Arming…", armed_away: "Alarm armed", pending: "Disarm now!", triggered: "ALARM"};
 async function loadAlarm() {
   const {state} = await (await fetch("api/alarm")).json();
   $("alarm").hidden = state === "unavailable";
@@ -259,6 +260,8 @@ const SECTIONS = [
   {title: "Alarm", desc: "Arm from Home Assistant (alarm_control_panel.smartcam_alarm) or the button at the top. While armed, an event reaching the trigger score flashes the red/blue warning lights (and sounds the sirens, if enabled), then the alarm stays quiet until it is disarmed and armed again.", test: true, fields: [
     ["alarm.enabled", "Alarm mode", "bool", true],
     ["alarm.trigger_score", "Trigger at score", "number", 8, "a person indoors while away scores 10"],
+    ["alarm.exit_delay", "Exit delay (s)", "number", 60, "after arming, time to leave before it is active"],
+    ["alarm.entry_delay", "Entry delay (s)", "number", 30, "after a trigger, time to disarm before lights and push"],
     ["alarm.cameras", "Cameras", "list", [], "empty = every outdoor Dahua"],
     ["alarm.light_minutes", "Warning lights for (min)", "number", 15],
     ["alarm.siren", "Siren", "bool", false],

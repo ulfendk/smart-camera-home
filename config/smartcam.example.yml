@@ -70,6 +70,8 @@ watchdog:               # restarts cameras whose stream died
 alarm:                  # arm from HA (alarm_control_panel.smartcam_alarm) or the web UI
   enabled: true
   trigger_score: 8      # a person indoors while away scores 10
+  exit_delay: 60        # seconds after arming before it is active (time to leave)
+  entry_delay: 30       # seconds between a trigger and the alarm going off (time to disarm)
   cameras: []           # whose red/blue warning lights are used; empty = every outdoor Dahua
   light_minutes: 15
   siren: false          # many cameras refuse siren commands; enable once tested

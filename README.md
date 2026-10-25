@@ -90,6 +90,8 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 - Alarm mode: `alarm_control_panel.smartcam_alarm` in Home Assistant. Arming switches on away mode;
   a serious event while armed (by default a person indoors, or loitering at a door at night) flashes
   the Dahua red/blue warning lights for 15 minutes, then stays quiet until disarmed and armed again.
+  Arming has an exit delay (60 s) and a trigger an entry delay (30 s, "pending") in which disarming cancels it;
+  only activity that starts after arming counts.
 
 ## Configuration
 

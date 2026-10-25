@@ -26,12 +26,15 @@ def setup(**ac):
     engine = EventEngine(cfg, db, RulesConfig())
     out = FakeOutput()
     alarm = Alarm(cfg, db, engine, AlarmConfig(**{"light_minutes": 0.001, "siren_on_seconds": 0.01,
-                                                  "siren_off_seconds": 0.01, **ac}), {"front_door": out})
+                                                  "siren_off_seconds": 0.01, "exit_delay": 0, "entry_delay": 0,
+                                                  **ac}), {"front_door": out})
     return alarm, engine, out
 
 
-def event(score: float) -> OpenEvent:
-    ev = OpenEvent(1, "living_room", "indoor", 0, 0)
+def event(score: float, start: float | None = None) -> OpenEvent:
+    import time
+    start = time.time() if start is None else start
+    ev = OpenEvent(1, "living_room", "indoor", start, start)
     ev.score, ev.reasons = score, ["person", "indoor while away"]
     return ev
 
@@ -95,4 +98,35 @@ def test_not_armed_never_triggers():
         alarm, engine, out = setup()
         await alarm._scored(event(10))
         assert alarm.state == DISARMED and out.calls == []
+    asyncio.run(go())
+
+
+def test_exit_delay_and_people_already_inside_do_not_trigger():
+    async def go():
+        import time
+        alarm, engine, out = setup(exit_delay=0.2)
+        inside = event(10, start=time.time())          # someone moving about while arming
+        await alarm.arm()
+        assert alarm.state == "arming" and not engine.away
+        await alarm._scored(event(10))
+        assert alarm.state == "arming"                  # nothing counts during the exit delay
+        await asyncio.sleep(0.3)
+        assert alarm.state == ARMED and engine.away
+        await alarm._scored(inside)                     # started before the alarm was active
+        assert alarm.state == ARMED and out.calls == []
+        await alarm._scored(event(10))                  # new activity after arming
+        assert alarm.state == TRIGGERED
+        await alarm.close()
+    asyncio.run(go())
+
+
+def test_entry_delay_lets_you_disarm_before_anything_happens():
+    async def go():
+        alarm, engine, out = setup(entry_delay=0.3)
+        await alarm.arm()
+        await alarm._scored(event(10))
+        assert alarm.state == "pending" and out.calls == []
+        await alarm.disarm()
+        await asyncio.sleep(0.4)
+        assert alarm.state == DISARMED and out.calls == []   # no lights, no alarm push
     asyncio.run(go())

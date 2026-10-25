@@ -142,7 +142,7 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
         if alarm is None:
             raise HTTPException(404, "alarm mode is off")
         if command == "trigger":
-            await alarm.trigger("triggered from the web UI")
+            await alarm.trigger("triggered from the web UI", delay=0)   # a test: no entry delay
         elif command in ("arm_away", "disarm"):
             await alarm.command(command)
         else:
