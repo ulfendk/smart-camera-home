@@ -1,6 +1,7 @@
 """YOLO (Ultralytics ONNX export, 84 x N output) on ONNX Runtime: CUDA on Linux, CoreML on macOS, else CPU."""
 
 import logging
+import threading
 from pathlib import Path
 
 import cv2
@@ -34,6 +35,9 @@ class YoloDetector:
         self.size = self.input.shape[2]
         self.min_score, self.iou = min_score, iou
         self.wanted = np.array([c in TRACKED for c in COCO])
+        # Camera threads share one session. Concurrent runs crash the CUDA provider (cuDNN failures,
+        # illegal memory access), and one GPU gains nothing from them; pre/post-processing stays parallel.
+        self.lock = threading.Lock()
         log.info("%s on %s", model.name, self.session.get_providers()[0])
 
     def letterbox(self, image: np.ndarray) -> tuple[np.ndarray, float, int, int]:
@@ -50,7 +54,8 @@ class YoloDetector:
         h, w = image.shape[:2]
         canvas, scale, left, top = self.letterbox(image)
         blob = canvas[:, :, ::-1].transpose(2, 0, 1)[np.newaxis].astype(np.float32) / 255
-        out = self.session.run(None, {self.input.name: blob})[0][0].T  # N x 84: cx, cy, w, h, 80 class scores
+        with self.lock:
+            out = self.session.run(None, {self.input.name: blob})[0][0].T  # N x 84: cx, cy, w, h, 80 class scores
 
         scores = out[:, 4:] * self.wanted
         cls = scores.argmax(1)
