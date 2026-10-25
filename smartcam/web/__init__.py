@@ -111,8 +111,9 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
         return [{"name": c.name, "location": c.location, "zones": list(c.zones)} for c in cfg.cameras.values()]
 
     @app.get("/api/events")
-    def events(limit: int = 100, camera: str | None = None, min_score: float = 0) -> list[dict]:
-        return db.events(limit, camera, min_score)
+    def events(limit: int = 100, camera: str | None = None, min_score: float = 0, kind: str | None = None,
+               since: float | None = None, until: float | None = None) -> list[dict]:
+        return db.events(min(limit, 1000), camera or None, min_score, kind or None, since, until)
 
     @app.post("/api/events/{event_id}/review")
     def review(event_id: int, body: Review) -> dict:

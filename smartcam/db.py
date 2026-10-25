@@ -67,11 +67,28 @@ class Database:
         with self.lock:
             return self._row(self.conn.execute("select * from events where id = ?", (event_id,)).fetchone())
 
-    def events(self, limit: int = 100, camera: str | None = None, min_score: float = 0) -> list[dict]:
+    VEHICLES = ("car", "truck", "bus", "motorcycle", "bicycle")
+
+    def events(self, limit: int = 100, camera: str | None = None, min_score: float = 0, kind: str | None = None,
+               since: float | None = None, until: float | None = None) -> list[dict]:
+        """Newest first. kind: person, vehicle or notified; since/until bound the start time."""
         sql, args = "select * from events where score >= ?", [min_score]
         if camera:
             sql += " and camera = ?"
             args.append(camera)
+        if kind == "person":
+            sql += " and label = 'person'"
+        elif kind == "vehicle":
+            sql += f" and label in ({','.join('?' * len(self.VEHICLES))})"
+            args += self.VEHICLES
+        elif kind == "notified":
+            sql += " and notified = 1"
+        if since is not None:
+            sql += " and start_ts >= ?"
+            args.append(since)
+        if until is not None:
+            sql += " and start_ts < ?"
+            args.append(until)
         with self.lock:
             rows = self.conn.execute(sql + " order by start_ts desc limit ?", [*args, limit]).fetchall()
         return [self._row(r) for r in rows]

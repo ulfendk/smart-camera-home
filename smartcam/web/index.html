@@ -53,6 +53,8 @@
   .chip { font: inherit; font-size: 13px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 16px; background: none; color: var(--fg); cursor: pointer; }
   .chip[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); }
   [hidden] { display: none !important; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .filters select, .filters input { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 6px 12px; }
 
   /* toggle switch, as in HA */
   .switch { position: relative; width: 36px; height: 14px; border-radius: 7px; background: var(--line); flex: none; }
@@ -120,6 +122,12 @@
 </header>
 <main>
   <section id="live" class="grid"></section>
+  <div id="event-filters" class="filters" hidden>
+    <select id="f-kind"><option value="">All events</option><option value="person">People</option><option value="vehicle">Vehicles</option><option value="notified">Notified only</option></select>
+    <select id="f-camera"><option value="">All cameras</option></select>
+    <select id="f-time"><option value="">Any time</option><option value="1h">Last hour</option><option value="today">Today</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option><option value="day">Pick a day…</option></select>
+    <input type="date" id="f-day" hidden>
+  </div>
   <section id="events" class="grid" hidden></section>
   <section id="settings" class="settings" hidden></section>
   <p id="status" class="muted"></p>
@@ -137,6 +145,7 @@ function showTab(name) {
     $(t).hidden = t !== name;
     $("tab-" + t).setAttribute("aria-pressed", t === name);
   }
+  $("event-filters").hidden = name !== "events";
   $("status").textContent = "";
   if (name === "events") loadEvents();
   if (name === "settings") loadSettings();
@@ -179,6 +188,7 @@ setInterval(() => { loadAlarm(); loadAway(); }, 10000);
 // --- live ----------------------------------------------------------------------------------------
 async function loadLive() {
   const cams = await (await fetch("api/cameras")).json();
+  $("f-camera").insertAdjacentHTML("beforeend", cams.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join(""));
   for (const c of cams) {
     const fig = document.createElement("figure");
     // Sub-streams are light enough to show all cameras at once; the name opens the main stream.
@@ -194,10 +204,28 @@ async function review(id, value, fig) {
   for (const b of fig.querySelectorAll("[data-value]")) b.setAttribute("aria-pressed", b.dataset.value === value);
 }
 
+function eventQuery() {
+  const q = new URLSearchParams({limit: 200});
+  if ($("f-kind").value) q.set("kind", $("f-kind").value);
+  if ($("f-camera").value) q.set("camera", $("f-camera").value);
+  const now = Date.now() / 1000, t = $("f-time").value;
+  $("f-day").hidden = t !== "day";
+  if (t === "1h") q.set("since", now - 3600);
+  if (t === "24h") q.set("since", now - 86400);
+  if (t === "7d") q.set("since", now - 7 * 86400);
+  if (t === "today") q.set("since", new Date().setHours(0, 0, 0, 0) / 1000);
+  if (t === "day" && $("f-day").value) {
+    const d = new Date($("f-day").value + "T00:00");
+    q.set("since", d / 1000); q.set("until", d / 1000 + 86400);
+  }
+  return q;
+}
+for (const id of ["f-kind", "f-camera", "f-time", "f-day"]) $(id).onchange = () => loadEvents();
+
 async function loadEvents() {
-  const events = await (await fetch("api/events?limit=100")).json();
+  const events = await (await fetch("api/events?" + eventQuery())).json();
   $("events").replaceChildren();
-  $("status").textContent = events.length ? "" : "No events yet.";
+  $("status").textContent = events.length ? "" : "No events match.";
   for (const e of events) {
     const fig = document.createElement("figure");
     const media = e.clip ? `<video controls preload="none" poster="media/${e.snapshot}" src="media/${e.clip}"></video>`

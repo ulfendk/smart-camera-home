@@ -29,3 +29,17 @@ def test_go2rtc_proxy_only_exposes_the_player():
     c = client()
     assert c.get("/go2rtc/api/config").status_code == 404
     assert c.get("/go2rtc/api/streams").status_code == 404
+
+
+
+def test_event_filters():
+    import tempfile
+    from smartcam.db import Database
+    db = Database(Path(tempfile.mkdtemp()) / "t.db")
+    p = db.insert_event(camera="front_door", label="person", start_ts=100, max_score=0.9)
+    db.insert_event(camera="driveway", label="car", start_ts=200, max_score=0.8)
+    db.update_event(p, notified=1)
+    ids = lambda **kw: [e["id"] for e in db.events(**kw)]
+    assert ids(kind="vehicle") == [2] and ids(kind="person") == [1] and ids(kind="notified") == [1]
+    assert ids(camera="driveway") == [2]
+    assert ids(since=150) == [2] and ids(until=150) == [1]
