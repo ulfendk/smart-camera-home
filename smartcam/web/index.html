@@ -421,7 +421,7 @@ function renderSettings() {
         out.hidden = false;
         out.textContent = !r.ok ? "Not available: " + (b.detail || r.status) + " (save, enable and restart first)"
           : `${b.learned_days} evenings learned. Today (${b.kind}; sunrise ${b.sunrise}, sunset ${b.sunset}) replays ${b.from || "nothing yet"}:\n`
-            + b.actions.map(a => `${a.at}  ${a.on ? "on " : "off"}  ${a.light}`).join("\n");
+            + b.actions.map(a => `${a.at}  ${a.on ? "on " : "off"}  ${a.light}${a.brightness ? ` (${a.brightness}%)` : ""}`).join("\n");
       };
       card.appendChild(row); card.appendChild(out);
     }

@@ -56,6 +56,7 @@ class Action:
     ts: float
     light: str
     on: bool
+    brightness: int | None = None   # percent, as on the recorded evening
 
 
 # --- sun --------------------------------------------------------------------------------------------
@@ -93,6 +94,10 @@ def clock_of(ts: float, day: date, tz: ZoneInfo) -> float:
     return (dt.date() - day).days * DAY + dt.hour * 3600 + dt.minute * 60 + dt.second
 
 
+def _pct(brightness) -> int | None:
+    return round(brightness / 2.55) if isinstance(brightness, (int, float)) and brightness > 0 else None
+
+
 def _clock(hhmm: str) -> float:
     h, m = hhmm.split(":")
     return int(h) * 3600 + int(m) * 60
@@ -115,29 +120,44 @@ def warp(t: float, src: tuple[float, float], dst: tuple[float, float], bedtime: 
 
 # --- learning ---------------------------------------------------------------------------------------
 
-def intervals(changes: list[tuple[float, bool]], start: float, end: float, pc: PresenceConfig) -> list[tuple[float, float]]:
-    """On-intervals within [start, end) from a light's state changes, cleaned up, as seconds after `start`."""
-    out, on_since, state = [], None, False
-    for ts, on in sorted(changes):
+def intervals(changes: list[tuple], start: float, end: float, pc: PresenceConfig) -> list[tuple]:
+    """On-intervals within [start, end) from a light's state changes, cleaned up, as seconds after `start`.
+
+    Changes are (ts, on) or (ts, on, brightness %); with brightness, each interval is (start, end, %),
+    the brightness it was mostly at."""
+    out, on_since, state, levels = [], None, False, []
+    for ch in sorted(changes, key=lambda c: c[0]):
+        ts, on = ch[0], ch[1]
         if ts >= end:
             break
+        if on and len(ch) > 2 and ch[2] is not None:
+            levels.append((max(ts, start), ch[2]))
         if on and not state:
             on_since = max(ts, start)
         elif not on and state and on_since is not None:
             if ts > start:
-                out.append((on_since, ts))
-            on_since = None
+                out.append((on_since, ts, _level(levels, on_since, ts)))
+            on_since, levels = None, []
         state = on
     if state and on_since is not None:
-        out.append((on_since, end))
+        out.append((on_since, end, _level(levels, on_since, end)))
     merged = []
-    for s, e in out:
+    for s, e, b in out:
         if merged and s - merged[-1][1] < pc.merge_gap_minutes * 60:
-            merged[-1] = (merged[-1][0], e)
+            merged[-1] = (merged[-1][0], e, merged[-1][2] or b)
         else:
-            merged.append((s, e))
-    return [(s - start, min(e, s + pc.max_on_hours * 3600) - start)
-            for s, e in merged if e - s >= pc.min_on_minutes * 60]
+            merged.append((s, e, b))
+    return [(s - start, min(e, s + pc.max_on_hours * 3600) - start, *([b] if b is not None else []))
+            for s, e, b in merged if e - s >= pc.min_on_minutes * 60]
+
+
+def _level(levels: list[tuple[float, int]], start: float, end: float) -> int | None:
+    """The brightness held longest within [start, end)."""
+    held: dict[int, float] = {}
+    for (ts, b), nxt in zip(levels, levels[1:] + [(end, None)]):
+        if ts < end:
+            held[b] = held.get(b, 0.0) + max(min(nxt[0], end) - max(ts, start), 0)
+    return max(held, key=held.get) if held else None
 
 
 class Library:
@@ -155,8 +175,10 @@ class Library:
         return [{"day": r[0], "weekend": bool(r[1]), "sun": (r[2], r[3]), "lights": json.loads(r[4])} for r in rows]
 
     def has(self, day: str) -> bool:
+        """Learned, with brightness (days learned before brightness was kept are learned again)."""
         with self.db.lock:
-            return self.db.conn.execute("select 1 from presence_days where day = ?", (day,)).fetchone() is not None
+            row = self.db.conn.execute("select lights from presence_days where day = ?", (day,)).fetchone()
+        return row is not None and all(len(span) > 2 for spans in json.loads(row[0]).values() for span in spans)
 
     def add(self, day: date, sun: tuple[float, float], lights: dict) -> None:
         with self.db.lock, self.db.conn:
@@ -204,14 +226,15 @@ def plan(day: date, library: list[dict], pc: PresenceConfig, sun: tuple[float, f
     for light, spans in src["lights"].items():
         if pc.lights and light not in pc.lights:
             continue
-        for s, e in spans:
+        for span in spans:
+            s, e, level = span[0], span[1], span[2] if len(span) > 2 else None
             a = warp(s, src["sun"], sun, bedtime) + shift + rng.uniform(-1, 1) * pc.light_jitter_minutes * 60
             b = warp(e, src["sun"], sun, bedtime) + shift + rng.uniform(-1, 1) * pc.light_jitter_minutes * 60
             if b <= a:
                 continue
             if a >= sun[0] + margin and b <= sun[1] - margin:
                 continue   # entirely in daylight: nobody notices, nothing to simulate
-            actions += [Action(at(day, a, tz), light, True), Action(at(day, b, tz), light, False)]
+            actions += [Action(at(day, a, tz), light, True, level), Action(at(day, b, tz), light, False)]
     return src["day"], sorted(actions, key=lambda x: x.ts)
 
 
@@ -252,21 +275,23 @@ class PresenceSimulator:
         now = datetime.now(tz)
         start = (now - timedelta(days=12)).replace(hour=0, minute=0, second=0, microsecond=0)
         r = await self.http.get(f"/api/history/period/{start.isoformat()}", params={
-            "filter_entity_id": ",".join(entities), "end_time": now.isoformat(), "minimal_response": "1", "no_attributes": "1"})
+            "filter_entity_id": ",".join(entities), "end_time": now.isoformat(),
+            "significant_changes_only": "0"})   # with attributes, so brightness changes are in there
         r.raise_for_status()
         changes: dict[str, list[tuple[float, bool]]] = {}
         for series in r.json():
             eid = series[0]["entity_id"]
-            changes[eid] = [(datetime.fromisoformat(s["last_changed"]).timestamp(), s["state"] == "on") for s in series
-                            if s["state"] in ("on", "off")]
+            changes[eid] = [(datetime.fromisoformat(s.get("last_updated") or s["last_changed"]).timestamp(),
+                             s["state"] == "on", _pct((s.get("attributes") or {}).get("brightness")))
+                            for s in series if s["state"] in ("on", "off")]
         added = 0
         day = start.date() + timedelta(days=1)   # the first day may start before the history does
         while day < now.date():
             if not self.library.has(day.isoformat()):
                 start_ts, end_ts = at(day, 0, tz), at(day + timedelta(days=1), 0, tz)
                 if self._home(changes.get(self.cfg.ha.alarm_entity), day, tz):
-                    lights = {l: [(clock_of(start_ts + s, day, tz), clock_of(start_ts + e, day, tz))
-                                  for s, e in intervals(changes.get(l, []), start_ts, end_ts, self.pc)]
+                    lights = {l: [(clock_of(start_ts + iv[0], day, tz), clock_of(start_ts + iv[1], day, tz), *iv[2:])
+                                  for iv in intervals(changes.get(l, []), start_ts, end_ts, self.pc)]
                               for l in self.pc.lights}
                     if any(lights.values()):
                         self.library.add(day, sun_times(day, lat, lon, tz), lights)
@@ -292,13 +317,13 @@ class PresenceSimulator:
         return {"day": day.isoformat(), "kind": kind(day, hols), "from": src,
                 "sunrise": fmt(at(day, sun[0], tz)), "sunset": fmt(at(day, sun[1], tz)),
                 "learned_days": len(self.library.days()),
-                "actions": [{"at": fmt(a.ts), "light": a.light, "on": a.on} for a in actions]}
+                "actions": [{"at": fmt(a.ts), "light": a.light, "on": a.on, "brightness": a.brightness} for a in actions]}
 
     async def _state(self, light: str) -> bool | None:
         r = await self.http.get(f"/api/states/{light}")
         return r.json().get("state") == "on" if r.status_code == 200 else None
 
-    async def _switch(self, light: str, on: bool) -> None:
+    async def _switch(self, light: str, on: bool, brightness: int | None = None) -> None:
         if light in self.manual:
             return
         now_on = await self._state(light)
@@ -309,7 +334,8 @@ class PresenceSimulator:
         if now_on == on:
             self.ours.setdefault(light, on)   # already as planned; not ours to switch off later
             return
-        await self.http.post(f"/api/services/light/{'turn_on' if on else 'turn_off'}", json={"entity_id": light})
+        data = {"entity_id": light} | ({"brightness_pct": brightness} if on and brightness else {})
+        await self.http.post(f"/api/services/light/{'turn_on' if on else 'turn_off'}", json=data)
         self.ours[light] = on
 
     async def _stop(self) -> None:
@@ -356,14 +382,14 @@ class PresenceSimulator:
         for light in {a.light for a in actions}:
             past = [a for a in actions if a.light == light and a.ts <= now]
             if past and past[-1].on:
-                await self._switch(light, True)
+                await self._switch(light, True, past[-1].brightness)
         try:
             for a in [a for a in actions if a.ts > now]:
                 while self.active and time.time() < a.ts:
                     await asyncio.sleep(min(30, a.ts - time.time()))
                 if not self.active:
                     break
-                await self._switch(a.light, a.on)
+                await self._switch(a.light, a.on, a.brightness)
             while self.active and datetime.now(tz).date() == today:
                 await asyncio.sleep(60)
         finally:

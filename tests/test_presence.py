@@ -66,3 +66,14 @@ def test_day_kinds_and_holidays_replay_the_latest_sunday():
     assert src == "2026-12-20"                                  # the latest Sunday
     src, _ = plan(date(2026, 12, 26), lib, PC, (8.5 * 3600, 15.7 * 3600), CPH, random.Random(3), set())
     assert src == "2026-12-19"                                  # a Saturday replays the Saturday
+
+
+def test_brightness_is_learned_and_replayed():
+    m = 0.0
+    changes = [(m + 1000, True, 80), (m + 1600, True, 30), (m + 4000, True, 30), (m + 5000, False, None)]
+    (iv,) = intervals(changes, m, m + 86400, PC)
+    assert iv == (1000, 5000, 30)                       # 30% for most of the visit
+    lib = [{"day": "2026-10-13", "weekend": False, "sun": (7.5 * 3600, 17.2 * 3600),
+            "lights": {"light.kitchen": [[18 * 3600, 20 * 3600, 30]]}}]
+    _, actions = plan(date(2026, 10, 27), lib, PC, (8 * 3600, 16.6 * 3600), CPH, random.Random(1))
+    assert actions[0].brightness == 30 and actions[1].brightness is None
