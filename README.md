@@ -157,6 +157,7 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 ## Roadmap
 
 - Reading licence plates (OCR) on speed events
+- Presence simulation while armed, learned from the home's own light history in Home Assistant
 - Siren for cameras that refuse the siren command (e.g. by switching on the camera's own "play
   alarm sound" event rule while the alarm is active)
 - Coral USB as a fast first pass in front of the GPU
