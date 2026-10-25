@@ -1,9 +1,16 @@
-"""FastAPI app: live view (via go2rtc's player), events with snapshots and clips, away mode."""
+"""FastAPI app: live view (via go2rtc's player), events with snapshots and clips, away mode.
 
+All URLs in the UI are relative, so it also works behind a path prefix such as Home Assistant ingress.
+go2rtc's player is proxied under go2rtc/ for the same reason: one port, reachable wherever the UI is.
+"""
+
+import asyncio
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+import httpx
+import websockets
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -13,6 +20,9 @@ from ..events import EventEngine
 from ..recorder import segment_start, segments
 
 INDEX = (Path(__file__).parent / "index.html").read_text()
+
+# Only the player and its stream endpoints; go2rtc's config API would expose camera credentials.
+GO2RTC_FILES = {"stream.html", "video-stream.js", "video-rtc.js", "api/frame.jpeg"}
 
 
 class Away(BaseModel):
@@ -30,8 +40,47 @@ def create_app(cfg: Config, db: Database, engine: EventEngine) -> FastAPI:
         app.mount(f"/media/{sub}", StaticFiles(directory=cfg.paths.data / sub), name=sub)
 
     @app.get("/", response_class=HTMLResponse)
-    def index(request: Request) -> str:
-        return INDEX.replace("{{GO2RTC}}", f"http://{request.url.hostname}:{cfg.go2rtc.api_port}")
+    def index() -> str:
+        return INDEX
+
+    go2rtc = f"127.0.0.1:{cfg.go2rtc.api_port}"
+    http = httpx.AsyncClient(base_url=f"http://{go2rtc}", timeout=10)
+
+    @app.get("/go2rtc/{path:path}")
+    async def go2rtc_file(path: str, request: Request) -> Response:
+        if path not in GO2RTC_FILES:
+            raise HTTPException(404)
+        r = await http.get(f"/{path}", params=request.query_params)
+        return Response(r.content, r.status_code, media_type=r.headers.get("content-type"))
+
+    @app.websocket("/go2rtc/api/ws")
+    async def go2rtc_ws(ws: WebSocket) -> None:
+        """Relay the player's WebSocket (MSE video, WebRTC signalling) to go2rtc."""
+        await ws.accept()
+        try:
+            async with websockets.connect(f"ws://{go2rtc}/api/ws?{ws.url.query}", max_size=None) as upstream:
+                async def down():
+                    async for msg in upstream:
+                        await (ws.send_bytes(msg) if isinstance(msg, bytes) else ws.send_text(msg))
+
+                async def up():
+                    while True:
+                        msg = await ws.receive()
+                        if msg["type"] == "websocket.disconnect":
+                            return
+                        await upstream.send(msg.get("bytes") or msg.get("text"))
+
+                tasks = [asyncio.create_task(down()), asyncio.create_task(up())]
+                await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                for t in tasks:
+                    t.cancel()
+        except (WebSocketDisconnect, websockets.ConnectionClosed, OSError):
+            pass
+        finally:
+            try:
+                await ws.close()
+            except RuntimeError:
+                pass  # already closed
 
     @app.get("/api/cameras")
     def cameras() -> list[dict]:
@@ -61,7 +110,7 @@ def create_app(cfg: Config, db: Database, engine: EventEngine) -> FastAPI:
 
     @app.get("/api/recordings/{camera}")
     def recordings(camera: str, start: float, end: float) -> list[dict]:
-        return [{"start": segment_start(p), "url": f"/media/recordings/{p.relative_to(cfg.paths.recordings)}"}
+        return [{"start": segment_start(p), "url": f"media/recordings/{p.relative_to(cfg.paths.recordings)}"}
                 for p in segments(cfg, camera, start, end)]
 
     return app

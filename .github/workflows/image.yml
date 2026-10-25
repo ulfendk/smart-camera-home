@@ -3,7 +3,7 @@ name: image
 on:
   push:
     branches: [main]
-    paths-ignore: ["**.md", "tests/**", "tools/**", "scripts/**", "site/**", ".github/workflows/pages.yml"]
+    paths-ignore: ["**.md", "tests/**", "tools/**", "scripts/**", "site/**", ".github/workflows/pages.yml", "smartcam_proxy/**", "repository.yaml"]
   workflow_dispatch:
 
 permissions:

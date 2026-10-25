@@ -39,7 +39,7 @@
   <p id="status" class="muted"></p>
 </main>
 <script>
-const GO2RTC = "{{GO2RTC}}";
+const GO2RTC = "go2rtc";   // proxied by smartcam, relative so it works under a path prefix
 const $ = id => document.getElementById(id);
 const fmt = ts => new Date(ts * 1000).toLocaleString();
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
@@ -55,18 +55,18 @@ $("tab-live").onclick = () => showTab("live");
 $("tab-events").onclick = () => showTab("events");
 
 async function loadAway() {
-  const {away} = await (await fetch("/api/away")).json();
+  const {away} = await (await fetch("api/away")).json();
   $("away").setAttribute("aria-pressed", away);
   $("away").textContent = away ? "Away" : "Home";
 }
 $("away").onclick = async () => {
   const away = $("away").getAttribute("aria-pressed") !== "true";
-  await fetch("/api/away", {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({away})});
+  await fetch("api/away", {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({away})});
   loadAway();
 };
 
 async function loadLive() {
-  const cams = await (await fetch("/api/cameras")).json();
+  const cams = await (await fetch("api/cameras")).json();
   for (const c of cams) {
     const fig = document.createElement("figure");
     // Sub-streams are light enough to show all cameras at once; the name links to the main stream.
@@ -77,18 +77,18 @@ async function loadLive() {
 }
 
 async function review(id, value, fig) {
-  await fetch(`/api/events/${id}/review`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({review: value})});
+  await fetch(`api/events/${id}/review`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({review: value})});
   for (const b of fig.querySelectorAll(".actions button")) b.setAttribute("aria-pressed", b.dataset.value === value);
 }
 
 async function loadEvents() {
-  const events = await (await fetch("/api/events?limit=100")).json();
+  const events = await (await fetch("api/events?limit=100")).json();
   $("events").replaceChildren();
   $("status").textContent = events.length ? "" : "No events yet.";
   for (const e of events) {
     const fig = document.createElement("figure");
-    const media = e.clip ? `<video controls preload="none" poster="/media/${e.snapshot}" src="/media/${e.clip}"></video>`
-                         : `<img loading="lazy" src="/media/${e.snapshot}" alt="snapshot">`;
+    const media = e.clip ? `<video controls preload="none" poster="media/${e.snapshot}" src="media/${e.clip}"></video>`
+                         : `<img loading="lazy" src="media/${e.snapshot}" alt="snapshot">`;
     const dur = e.end_ts ? `${Math.round(e.end_ts - e.start_ts)}s` : "ongoing";
     fig.innerHTML = `${media}
       <figcaption>

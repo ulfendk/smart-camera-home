@@ -63,6 +63,14 @@ uvx --python 3.12 --from "ultralytics==8.3.*" --with onnx --with onnxslim \
 
 Run the tests with `uv run pytest`.
 
+## In the Home Assistant sidebar
+
+The repository is also a Home Assistant add-on repository. Add
+`https://github.com/ulfendk/smart-camera-home` under Settings → Add-ons → Add-on Store → ⋮ →
+Repositories, install **smartcam proxy**, and set `server` to your smartcam address (for example
+`http://192.168.1.10:8971`). The UI then opens in the sidebar behind Home Assistant's login, live view
+included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
+
 ## Using it
 
 - Web UI on port 8971: live view, events with snapshots and clips, a Home/Away toggle, and a
@@ -126,11 +134,11 @@ smartcam/
   web/             FastAPI + single-page UI
 tools/             probe, Coral check, regression tooling
 site/              the project website (GitHub Pages)
+smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 ```
 
 ## Roadmap
 
-- Home Assistant add-on / ingress proxy, so the UI opens inside Home Assistant
 - Configuration UI in the web app
 - Alarm mode: arm/disarm from Home Assistant; when triggered, the Dahua red/blue warning lights
   flash for 10-15 minutes and the siren sounds in bursts (e.g. 10 s on, a pause, a few rounds),

@@ -1,0 +1,10 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# Writes the nginx server config from the add-on options.
+bashio::var.json \
+    entry "$(bashio::addon.ingress_entry)" \
+    server "$(bashio::config 'server' | sed 's#/*$##')" \
+    | tempio \
+        -template /etc/nginx/templates/ingress.gtpl \
+        -out /etc/nginx/servers/ingress.conf
+bashio::log.info "Proxying to $(bashio::config 'server')"
