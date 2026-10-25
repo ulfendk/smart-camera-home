@@ -67,7 +67,7 @@ Run the tests with `uv run pytest`.
 
 The repository is also a Home Assistant add-on repository. Add
 `https://github.com/ulfendk/smart-camera-home` under Settings → Add-ons → Add-on Store → ⋮ →
-Repositories, install **smartcam proxy**, and set `server` to your smartcam address (for example
+Repositories, install **SmartCam**, and set `server` to your smartcam address (for example
 `http://192.168.1.10:8971`). The UI then opens in the sidebar behind Home Assistant's login, live view
 included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 

@@ -1,6 +1,6 @@
 configuration:
   server:
-    name: smartcam server
+    name: SmartCam server
     description: >-
-      Address of the smartcam web UI as seen from Home Assistant, for example
+      Address of the SmartCam server as seen from Home Assistant, for example
       http://192.168.1.10:8971
