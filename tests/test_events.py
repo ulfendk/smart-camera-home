@@ -52,14 +52,15 @@ def test_quick_night_passerby_while_home_is_not_notified():
     assert e.score == 2 and not should_notify(e, False, MIDNIGHT, RULES)
 
 
-def test_armed_home_warns_about_outdoor_activity_and_ignores_indoors():
-    e = ev(); e.score, e.reasons = score_event(e, NOON, False, RULES, [], home_armed=True)
-    assert e.score == 3 and "armed at home" in e.reasons and not should_notify(e, False, NOON, RULES, home_armed=True)
-    e = ev(door=45); e.score, e.reasons = score_event(e, NOON, False, RULES, [], home_armed=True)
-    assert e.score == 6 and should_notify(e, False, NOON, RULES, home_armed=True)    # loitering at the door by day
-    e = ev(); e.score, e.reasons = score_event(e, MIDNIGHT, False, RULES, [], home_armed=True)
-    assert e.score == 4 and should_notify(e, False, MIDNIGHT, RULES, home_armed=True) # anyone outside at night
-    e = ev("indoor"); e.score, e.reasons = score_event(e, MIDNIGHT, False, RULES, [], home_armed=True)
+def test_armed_home_warns_only_about_very_suspicious_outdoor_activity():
+    home = lambda e, t: (score_event(e, t, False, RULES, [], home_armed=True))
+    e = ev(); e.score, e.reasons = home(e, MIDNIGHT)
+    assert e.score == 3 and not should_notify(e, False, MIDNIGHT, RULES, home_armed=True)   # just passing at night
+    e = ev(door=45); e.score, e.reasons = home(e, MIDNIGHT)
+    assert e.score == 6 and should_notify(e, False, MIDNIGHT, RULES, home_armed=True)      # loitering at the door
+    e = ev(); e.score, e.reasons = score_event(e, MIDNIGHT, False, RULES, ["driveway"], home_armed=True)
+    assert e.score == 4 and should_notify(e, False, MIDNIGHT, RULES, home_armed=True)      # camera to camera
+    e = ev("indoor"); e.score, e.reasons = home(e, MIDNIGHT)
     assert e.score == 2 and not should_notify(e, False, MIDNIGHT, RULES, home_armed=True)
 
 

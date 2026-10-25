@@ -73,6 +73,8 @@ async def main() -> None:
                 tg.create_task(link.run())
             if presence is not None:
                 tg.create_task(presence.run())
+            if alarm is not None:
+                tg.create_task(alarm.morning_clock())
             tg.create_task(_restart_on(restart))
     finally:
         if alarm is not None:

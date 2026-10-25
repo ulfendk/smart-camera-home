@@ -37,6 +37,7 @@ class RulesConfig(BaseModel):
     pre_capture: float = 5
     post_capture: float = 5
     merge_gap: float = 30          # a person within this long after an event ends continues that event
+    home_armed_bonus: float = 1    # armed at home: outdoor people score this much more
 
 
 @dataclass
@@ -71,7 +72,7 @@ def score_event(ev: OpenEvent, now: float, away: bool, rules: RulesConfig,
         score += 3
         reasons.append("away")
     elif home_armed and ev.location == "outdoor":
-        score += 2
+        score += rules.home_armed_bonus
         reasons.append("armed at home")
     if is_night(now, rules):
         score += 1

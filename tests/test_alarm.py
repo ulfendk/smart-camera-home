@@ -132,3 +132,18 @@ def test_armed_home_never_goes_off_and_switches_cleanly():
         await alarm.disarm()
         assert alarm.state == DISARMED and not engine.home_armed and not engine.away
     asyncio.run(go())
+
+
+def test_morning_person_on_the_stairs_disarms_armed_home(monkeypatch):
+    async def go():
+        alarm, engine, out = setup(home_disarm_camera="living_room", home_disarm_after="05:00")
+        await alarm.arm_home()
+        monkeypatch.setattr(alarm, "_local_minutes", lambda: 4 * 60 + 30)    # 04:30: too early
+        await alarm._occupancy("living_room", True)
+        assert alarm.state == "armed_home"
+        monkeypatch.setattr(alarm, "_local_minutes", lambda: 6 * 60 + 15)    # 06:15
+        await alarm._occupancy("front_door", True)                           # another camera: no
+        assert alarm.state == "armed_home"
+        await alarm._occupancy("living_room", True)
+        assert alarm.state == "disarmed" and not engine.home_armed
+    asyncio.run(go())

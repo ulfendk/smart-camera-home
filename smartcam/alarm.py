@@ -37,6 +37,9 @@ class AlarmConfig(BaseModel):
     entry_delay: float = 30         # seconds between a trigger and the alarm going off (time to disarm)
     cameras: list[str] = []         # cameras whose deterrence is used; empty = every outdoor Dahua
     light_minutes: float = 15       # red/blue warning lights
+    home_disarm_camera: str | None = None   # armed at home: a person here in the morning disarms (e.g. the stairs)
+    home_disarm_after: str = "05:00"        # ... from this time
+    home_disarm_at: str | None = "09:00"    # ... and at this time anyway (None: never by the clock)
 
 
 class Alarm:
@@ -52,6 +55,7 @@ class Alarm:
         self._task: asyncio.Task | None = None        # exit delay, entry delay or deterrence
         self.armed_at = float(self.db.get_setting("alarm_armed_at", "0"))   # when it became active
         engine.on_score.append(self._scored)
+        engine.on_occupancy.append(self._occupancy)
 
     @property
     def state(self) -> str:
@@ -120,6 +124,33 @@ class Alarm:
             await self.arm()
         elif cmd == "DISARM":
             await self.disarm()
+
+    def _local_minutes(self) -> int:
+        now = time.localtime()
+        return now.tm_hour * 60 + now.tm_min
+
+    @staticmethod
+    def _minutes(hhmm: str) -> int:
+        h, m = hhmm.split(":")
+        return int(h) * 60 + int(m)
+
+    def _morning(self) -> bool:
+        """Between home_disarm_after and noon."""
+        return self._minutes(self.ac.home_disarm_after) <= self._local_minutes() < 12 * 60
+
+    async def _occupancy(self, camera: str, occupied: bool) -> None:
+        if occupied and self.state == ARMED_HOME and camera == self.ac.home_disarm_camera and self._morning():
+            log.info("good morning: a person on %s, disarming", camera)
+            await self.disarm()
+
+    async def morning_clock(self) -> None:
+        """Disarm "armed home" at home_disarm_at, in case nobody passed the disarm camera."""
+        while True:
+            if (self.ac.home_disarm_at and self.state == ARMED_HOME
+                    and self._local_minutes() == self._minutes(self.ac.home_disarm_at)):
+                log.info("good morning: %s, disarming", self.ac.home_disarm_at)
+                await self.disarm()
+            await asyncio.sleep(30)
 
     async def _scored(self, ev: OpenEvent) -> None:
         # Only activity that started after the alarm became active counts: not the people leaving.
