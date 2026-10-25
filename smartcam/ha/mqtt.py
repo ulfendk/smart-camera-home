@@ -116,7 +116,8 @@ class HaMqtt:
     async def _publish_speed(self, event: dict) -> None:
         cam = event["camera"]
         await self._publish(f"{cam}/vehicle_speed/attributes", json.dumps(
-            {"label": event["label"], "event_id": event["id"], "direction": event["reasons"][-1], "at": event["start_ts"]}))
+            {"label": event["label"], "event_id": event["id"], "direction": event["reasons"][1] if len(event["reasons"]) > 1 else None,
+             "plate": event.get("plate"), "at": event["start_ts"]}))
         await self._publish(f"{cam}/vehicle_speed", str(event["speed"]))
         await self._publish_alert_image(event)
 

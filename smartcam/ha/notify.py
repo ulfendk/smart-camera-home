@@ -77,7 +77,8 @@ class HaNotifier:
         p = alert_payload(self.cfg, event)
         limit = f" (limit {sc.limit_kmh:.0f})" if sc.limit_kmh else ""
         p["title"] = f"🚗 {event['speed']:.0f} km/h at {event['camera']}"
-        p["message"] = f"{event['label']} {event['reasons'][-1]}{limit}"
+        plate = f" · {event['plate']}" if event.get("plate") else ""
+        p["message"] = f"{event['label']}{plate}{limit}"
         await self._send(p)
 
     async def alarm(self, why: str, event: dict | None) -> None:

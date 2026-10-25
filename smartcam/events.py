@@ -18,6 +18,7 @@ import numpy as np
 from pydantic import BaseModel
 
 from .clips import cut_clip, frame_at
+from .speed import SpeedConfig
 from .config import Config
 from .db import Database
 from .pipeline import FrameResult
@@ -323,6 +324,12 @@ class EventEngine:
                 cv2.imwrite(str(full), img, [cv2.IMWRITE_JPEG_QUALITY, 88])
                 self.db.update_event(ev_id, snapshot=str(full.relative_to(self.cfg.paths.data)),
                                      crop=str(crop_path.relative_to(self.cfg.paths.data)))
+                if SpeedConfig(**(self.cfg.cameras[r.camera].speed or {})).read_plates and crop.size:
+                    from .plates import reader
+                    if plate := await asyncio.to_thread(reader().read, crop):
+                        self.db.update_event(ev_id, plate=plate[0], plate_conf=plate[1],
+                                             reasons=[f"{r.kmh:.0f} km/h", r.direction, plate[0]])
+                        log.info("event %d: plate %s (%.0f%%)", ev_id, plate[0], plate[1] * 100)
         except Exception:
             log.exception("best shot for speed event %d failed", ev_id)
         event = self.db.event(ev_id)

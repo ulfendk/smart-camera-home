@@ -205,7 +205,7 @@ async function loadEvents() {
     const dur = e.end_ts ? `${Math.round(e.end_ts - e.start_ts)}s` : "ongoing";
     fig.innerHTML = `${media}
       <figcaption>
-        <span><b>${esc(e.camera)}</b> ${esc(e.label)}${e.speed != null ? ` <b>${Math.round(e.speed)} km/h</b>` : ""} <small>${fmt(e.start_ts)} · ${dur}</small>${e.crop ? ` <a href="media/${e.crop}" target="_blank">vehicle close-up</a>` : ""}</span>
+        <span><b>${esc(e.camera)}</b> ${esc(e.label)}${e.speed != null ? ` <b>${Math.round(e.speed)} km/h</b>` : ""}${e.plate ? ` <code>${esc(e.plate)}</code>` : ""} <small>${fmt(e.start_ts)} · ${dur}</small>${e.crop ? ` <a href="media/${e.crop}" target="_blank">vehicle close-up</a>` : ""}</span>
         <span class="score ${e.score >= 4 ? "high" : ""}" title="${esc(e.reasons.join(", "))}">score ${e.score}${e.notified ? " · notified" : ""}</span>
       </figcaption>
       <figcaption><small>${esc(e.reasons.join(" · "))}</small>

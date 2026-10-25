@@ -34,7 +34,7 @@ class Database:
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
-        for column, kind in (("speed", "real"), ("crop", "text")):   # added after the first release
+        for column, kind in (("speed", "real"), ("crop", "text"), ("plate", "text"), ("plate_conf", "real")):   # added later
             try:
                 self.conn.execute(f"alter table events add column {column} {kind}")
             except sqlite3.OperationalError:

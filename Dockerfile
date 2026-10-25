@@ -37,6 +37,8 @@ COPY --from=models /models/*.onnx models/
 COPY smartcam smartcam
 COPY config/smartcam.example.yml config/
 RUN uv sync --frozen --no-dev -p 3.12
+# Licence plate models (fast-alpr), fetched now so the camera host needs no internet for them.
+RUN uv run --no-sync python -c "from smartcam.plates import reader; reader().load()"
 
 ENV SMARTCAM_CONFIG=/app/data/smartcam.yml
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s \

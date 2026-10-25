@@ -18,6 +18,7 @@ dependencies = [
   "aiomqtt>=2.5.1",
   "ruamel-yaml>=0.18",
   "holidays>=0.60",
+  "fast-alpr>=0.4",
 ]
 
 [dependency-groups]

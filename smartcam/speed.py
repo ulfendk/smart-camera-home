@@ -22,6 +22,7 @@ class SpeedConfig(BaseModel):
     distance_m: float = 0                  # between the lines, along the road
     limit_kmh: float | None = None         # shown with the reading
     notify_over_kmh: float | None = None   # push notification at or above this speed
+    read_plates: bool = True               # read the licence plate on the best shot
 
     @field_validator("line_a", "line_b")
     @classmethod
