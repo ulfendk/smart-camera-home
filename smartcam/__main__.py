@@ -6,7 +6,7 @@ import signal
 
 import uvicorn
 
-from . import detection, go2rtc, recorder
+from . import detection, go2rtc, recorder, retention
 from .config import load_config
 from .db import Database
 from .events import EventEngine, RulesConfig
@@ -30,6 +30,7 @@ async def main() -> None:
         tg.create_task(go2rtc.run(cfg))
         await asyncio.sleep(2)  # let go2rtc open its RTSP port before anything connects
         tg.create_task(recorder.run(cfg))
+        tg.create_task(retention.run(cfg, db))
         tg.create_task(detection.run(cfg, engine))
         tg.create_task(server.serve())
         if cfg.mqtt.enabled:

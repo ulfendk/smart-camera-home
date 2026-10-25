@@ -85,7 +85,9 @@ class PathsConfig(BaseModel):
 
 class RecordConfig(BaseModel):
     segment_seconds: int = 10
-    retain_days: float = 2
+    continuous_hours: float = 6   # every segment is kept this long; event clips are cut from them
+    event_days: float = 10        # event clips and snapshots are kept this long
+    min_free_gb: float = 10       # below this, the oldest recordings go first, then the oldest events
 
 
 class DetectConfig(BaseModel):

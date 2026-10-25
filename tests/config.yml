@@ -56,7 +56,9 @@ paths:
 
 record:
   segment_seconds: 10
-  retain_days: 7
+  continuous_hours: 6   # rolling buffer of everything (about 2-4 GB per camera-hour at 5 MP)
+  event_days: 10        # event clips and snapshots
+  min_free_gb: 10       # disk guard
 
 detect:
   fps: 5

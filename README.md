@@ -81,6 +81,7 @@ Run the tests with `uv run pytest`.
 | `lights` | Dahua white light; `dry_run: true` only logs what it would switch |
 | `mqtt` / `ha` | Home Assistant entities and push notifications |
 | `detect` | fps, hardware decoding, model |
+| `record` | what stays on disk: a rolling buffer of everything (`continuous_hours`), event clips and snapshots (`event_days`), and a free-space guard (`min_free_gb`) |
 
 `${VAR}` and `${VAR:-default}` are filled in from the environment or `.env`.
 

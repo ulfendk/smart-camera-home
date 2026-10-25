@@ -71,6 +71,19 @@ class Database:
             rows = self.conn.execute(sql + " order by start_ts desc limit ?", [*args, limit]).fetchall()
         return [self._row(r) for r in rows]
 
+    def events_before(self, ts: float | None = None, limit: int = 1000) -> list[dict]:
+        """Oldest events first; only those that started before `ts` if given."""
+        sql, args = "select * from events", []
+        if ts is not None:
+            sql, args = sql + " where start_ts < ?", [ts]
+        with self.lock:
+            rows = self.conn.execute(sql + " order by start_ts limit ?", [*args, limit]).fetchall()
+        return [self._row(r) for r in rows]
+
+    def delete_event(self, event_id: int) -> None:
+        with self.lock, self.conn:
+            self.conn.execute("delete from events where id = ?", (event_id,))
+
     def get_setting(self, key: str, default: str | None = None) -> str | None:
         with self.lock:
             row = self.conn.execute("select value from settings where key = ?", (key,)).fetchone()

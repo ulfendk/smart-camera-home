@@ -5,7 +5,6 @@ Layout: <data>/recordings/YYYY-MM-DD/HH/<camera>/MM.SS.mp4 (local time, the same
 
 import asyncio
 import logging
-import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -57,22 +56,16 @@ def ensure_dirs(cfg: Config, now: float | None = None) -> None:
             (hour_dir / name).mkdir(parents=True, exist_ok=True)
 
 
-def prune(cfg: Config, now: float | None = None) -> int:
-    """Delete hour directories older than the retention period. Returns how many were removed."""
-    cutoff = (now or time.time()) - cfg.record.retain_days * 86400
-    removed = 0
+def hour_dirs(cfg: Config) -> list[tuple[float, Path]]:
+    """Recording hour directories with their start time, oldest first."""
+    found = []
     for hour_dir in cfg.paths.recordings.glob("*/*"):
         try:
-            hour = datetime.strptime(f"{hour_dir.parent.name} {hour_dir.name}", "%Y-%m-%d %H").timestamp()
+            found.append((datetime.strptime(f"{hour_dir.parent.name} {hour_dir.name}", "%Y-%m-%d %H").timestamp(),
+                          hour_dir))
         except ValueError:
             continue
-        if hour + 3600 < cutoff:
-            shutil.rmtree(hour_dir)
-            removed += 1
-    for day_dir in cfg.paths.recordings.glob("*"):
-        if day_dir.is_dir() and not any(day_dir.iterdir()):
-            day_dir.rmdir()
-    return removed
+    return sorted(found)
 
 
 async def run(cfg: Config) -> None:
@@ -80,13 +73,8 @@ async def run(cfg: Config) -> None:
     tasks = [asyncio.create_task(supervise(f"record:{name}", lambda cam=cam: ffmpeg_args(cfg, cam)))
              for name, cam in cfg.cameras.items()]
     try:
-        last_prune = 0.0
         while True:
             ensure_dirs(cfg)
-            if time.monotonic() - last_prune > 600:
-                last_prune = time.monotonic()
-                if n := prune(cfg):
-                    log.info("pruned %d hour(s) of recordings", n)
             await asyncio.sleep(60)
     finally:
         for t in tasks:
