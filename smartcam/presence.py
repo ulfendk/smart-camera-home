@@ -78,6 +78,18 @@ def sun_times(day: date, lat: float, lon: float, tz: ZoneInfo) -> tuple[float, f
     return rise, sset
 
 
+def at(day: date, clock: float, tz: ZoneInfo) -> float:
+    """Timestamp of a local clock time (seconds after 00:00) on `day`. Clock time, not elapsed time,
+    so the days the clocks change (23 or 25 hours long) come out right."""
+    return (datetime(day.year, day.month, day.day, tzinfo=tz) + timedelta(seconds=clock)).timestamp()
+
+
+def clock_of(ts: float, day: date, tz: ZoneInfo) -> float:
+    """The local clock time of `ts`, in seconds after 00:00 of `day` (86400 and up for after midnight)."""
+    dt = datetime.fromtimestamp(ts, tz)
+    return (dt.date() - day).days * DAY + dt.hour * 3600 + dt.minute * 60 + dt.second
+
+
 def _clock(hhmm: str) -> float:
     h, m = hhmm.split(":")
     return int(h) * 3600 + int(m) * 60
@@ -160,7 +172,6 @@ def plan(day: date, library: list[dict], pc: PresenceConfig, sun: tuple[float, f
         return None, []
     src = rng.choice(pool)
     shift = rng.uniform(-pc.jitter_minutes, pc.jitter_minutes) * 60
-    midnight = datetime(day.year, day.month, day.day, tzinfo=tz).timestamp()
     bedtime = _clock(pc.bedtime)
     margin = pc.daylight_margin_minutes * 60
     actions = []
@@ -174,7 +185,7 @@ def plan(day: date, library: list[dict], pc: PresenceConfig, sun: tuple[float, f
                 continue
             if a >= sun[0] + margin and b <= sun[1] - margin:
                 continue   # entirely in daylight: nobody notices, nothing to simulate
-            actions += [Action(midnight + a, light, True), Action(midnight + b, light, False)]
+            actions += [Action(at(day, a, tz), light, True), Action(at(day, b, tz), light, False)]
     return src["day"], sorted(actions, key=lambda x: x.ts)
 
 
@@ -221,20 +232,22 @@ class PresenceSimulator:
         day = start.date() + timedelta(days=1)   # the first day may start before the history does
         while day < now.date():
             if not self.library.has(day.isoformat()):
-                midnight = datetime(day.year, day.month, day.day, tzinfo=tz).timestamp()
-                if self._home(changes.get(self.cfg.ha.alarm_entity), midnight):
-                    lights = {l: intervals(changes.get(l, []), midnight, midnight + DAY, self.pc) for l in self.pc.lights}
+                start_ts, end_ts = at(day, 0, tz), at(day + timedelta(days=1), 0, tz)
+                if self._home(changes.get(self.cfg.ha.alarm_entity), day, tz):
+                    lights = {l: [(clock_of(start_ts + s, day, tz), clock_of(start_ts + e, day, tz))
+                                  for s, e in intervals(changes.get(l, []), start_ts, end_ts, self.pc)]
+                              for l in self.pc.lights}
                     if any(lights.values()):
                         self.library.add(day, sun_times(day, lat, lon, tz), lights)
                         added += 1
             day += timedelta(days=1)
         return added
 
-    def _home(self, alarm: list[tuple[float, bool]] | None, midnight: float) -> bool:
+    def _home(self, alarm: list[tuple[float, bool]] | None, day: date, tz: ZoneInfo) -> bool:
         """Was the house lived in that evening? Not if the alarm was on for over half an hour of 15:00-24:00."""
         if alarm is None:
             return True
-        armed = sum(e - s for s, e in intervals(alarm, midnight + 15 * 3600, midnight + DAY,
+        armed = sum(e - s for s, e in intervals(alarm, at(day, 15 * 3600, tz), at(day + timedelta(days=1), 0, tz),
                                                PresenceConfig(merge_gap_minutes=0, min_on_minutes=0, max_on_hours=24)))
         return armed < 1800
 
@@ -244,8 +257,7 @@ class PresenceSimulator:
         sun = sun_times(day, lat, lon, tz)
         src, actions = plan(day, self.library.days(), self.pc, sun, tz, random.Random(day.toordinal()))
         fmt = lambda ts: datetime.fromtimestamp(ts, tz).strftime("%H:%M")
-        return {"day": day.isoformat(), "from": src, "sunrise": fmt(datetime(day.year, day.month, day.day, tzinfo=tz).timestamp() + sun[0]),
-                "sunset": fmt(datetime(day.year, day.month, day.day, tzinfo=tz).timestamp() + sun[1]),
+        return {"day": day.isoformat(), "from": src, "sunrise": fmt(at(day, sun[0], tz)), "sunset": fmt(at(day, sun[1], tz)),
                 "learned_days": len(self.library.days()),
                 "actions": [{"at": fmt(a.ts), "light": a.light, "on": a.on} for a in actions]}
 

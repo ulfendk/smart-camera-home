@@ -2,7 +2,9 @@ import random
 from datetime import date
 from zoneinfo import ZoneInfo
 
-from smartcam.presence import PresenceConfig, intervals, plan, sun_times, warp
+from datetime import datetime
+
+from smartcam.presence import PresenceConfig, at, clock_of, intervals, plan, sun_times, warp
 
 CPH = ZoneInfo("Europe/Copenhagen")
 PC = PresenceConfig()
@@ -43,3 +45,11 @@ def test_plan_replays_a_same_kind_evening_and_skips_daylight():
     assert src == "2026-10-14"
     assert len(actions) == 2 and actions[0].on and not actions[1].on   # the 10-11 daytime interval is skipped
     assert plan(date(2026, 10, 27), [], PC, (8 * 3600, 16.6 * 3600), CPH, random.Random(1)) == (None, [])
+
+
+def test_clock_times_survive_the_day_the_clocks_go_back():
+    day = date(2026, 10, 25)                     # 25 hours long in Copenhagen
+    ts = at(day, 7 * 3600, CPH)
+    assert datetime.fromtimestamp(ts, CPH).strftime("%H:%M") == "07:00"
+    assert clock_of(ts, day, CPH) == 7 * 3600
+    assert clock_of(at(day + __import__("datetime").timedelta(days=1), 0, CPH), day, CPH) == 86400
