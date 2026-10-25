@@ -28,3 +28,10 @@ def test_no_burst_after_stall():
 def test_output_size_keeps_aspect_and_even_height():
     assert output_size(2592, 1944, 1280) == (1280, 960)
     assert output_size(640, 360, 1280) == (640, 360)
+
+
+def test_logged_ffmpeg_errors_hide_credentials():
+    from smartcam.supervise import redact
+    msg = "Error opening input file rtsp://smartcam:yo6Q-x_y@127.0.0.1:8554/entre. | rtsp://admin:p@ss@192.0.2.1/x"
+    assert "yo6Q" not in redact(msg) and "p@ss" not in redact(msg)
+    assert "rtsp://***@127.0.0.1:8554/entre" in redact(msg)
