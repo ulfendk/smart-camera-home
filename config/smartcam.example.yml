@@ -79,6 +79,12 @@ alarm:                  # arm from HA (alarm_control_panel.smartcam_alarm) or th
   siren_off_seconds: 20
   siren_rounds: 3
 
+presence:               # presence simulation while the alarm is armed (needs the ha section)
+  enabled: false
+  lights: [light.kitchen, light.living_room, light.hall]
+  jitter_minutes: 20    # the whole evening moves by up to this
+  bedtime: "23:00"      # stays at clock time as the season changes
+
 paths:
   data: data            # recordings, clips, db; relative to the install dir
 

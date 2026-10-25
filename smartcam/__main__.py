@@ -38,12 +38,16 @@ async def main() -> None:
         if cfg.ha.alarm_entity or cfg.ha.away_entity:
             from .ha.link import HaLink
             link = HaLink(cfg, engine, alarm)
+    presence = None
+    from .presence import PresenceConfig, PresenceSimulator
+    if cfg.ha.enabled and alarm is not None and PresenceConfig(**cfg.presence).enabled:
+        presence = PresenceSimulator(cfg, db, alarm)
     watchdog = None
     from .power import PowerWatchdog
     if (wd := PowerWatchdog(cfg)).last_frame:   # any camera it can restart
         watchdog = wd
     restart = asyncio.Event()
-    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine, restart, alarm), host="0.0.0.0", port=cfg.web.port,
+    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine, restart, alarm, presence), host="0.0.0.0", port=cfg.web.port,
                                            log_level="warning", lifespan="off"))  # no startup hooks
     if alarm is not None:
         await alarm.startup()
@@ -61,6 +65,8 @@ async def main() -> None:
                 tg.create_task(mqtt.run())
             if link is not None:
                 tg.create_task(link.run())
+            if presence is not None:
+                tg.create_task(presence.run())
             tg.create_task(_restart_on(restart))
     finally:
         if alarm is not None:

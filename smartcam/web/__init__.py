@@ -48,7 +48,7 @@ class CollapseSlashes:
 
 
 def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.Event | None = None,
-               alarm=None) -> FastAPI:
+               alarm=None, presence=None) -> FastAPI:
     app = FastAPI(title="SmartCam")
     app.add_middleware(CollapseSlashes)
     for sub in ("recordings", "snapshots", "clips"):
@@ -159,6 +159,14 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
             return await HaCameras(cfg).ensure()
         except ValueError as e:
             raise HTTPException(400, str(e))
+
+    @app.get("/api/presence")
+    async def presence_preview() -> dict:
+        """Today's presence simulation plan (what would run while armed), and how much is learned."""
+        if presence is None:
+            raise HTTPException(404, "presence simulation is off")
+        await presence.learn()
+        return await presence.preview()
 
     @app.get("/api/config")
     def get_config() -> dict:

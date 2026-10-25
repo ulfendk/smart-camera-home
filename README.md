@@ -83,6 +83,11 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 - Existing alarm setup: with `ha.alarm_entity` (e.g. an `input_boolean.alarm` that a keypad and scripts
   set), SmartCam arms and disarms with it, and arming SmartCam sets it, so keypads, locks and presence
   simulation stay in step. `ha.away_entity` does the same for away mode.
+- Presence simulation while armed: replays a real evening from when you were home (same weekday or
+  weekend, all lights together), warped to today's sunrise and sunset with bedtime kept, learned from Home
+  Assistant's light history into SmartCam's own library (so it outlives the recorder). Hand-switched lights
+  are left alone; on disarm only its own lights are switched off. Settings → Presence simulation previews
+  today's plan.
 - Vehicle speed: draw Speed line A and B across the road in a camera's zone editor and enter the distance
   between them. Each passing vehicle becomes an event with its speed, a full-resolution best shot and a
   close-up for the plate and driver; `sensor.smartcam_<camera>_vehicle_speed` in Home Assistant, and a push
@@ -154,7 +159,6 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 ## Roadmap
 
 - Reading licence plates (OCR) on speed events
-- Presence simulation while armed, learned from the home's own light history in Home Assistant
 - Siren for cameras that refuse the siren command (e.g. by switching on the camera's own "play
   alarm sound" event rule while the alarm is active)
 
