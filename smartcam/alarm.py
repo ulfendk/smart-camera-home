@@ -27,6 +27,7 @@ from .lights.dahua_rpc import WARNING_LIGHT, DahuaRpc
 log = logging.getLogger(__name__)
 
 DISARMED, ARMING, ARMED, PENDING, TRIGGERED = "disarmed", "arming", "armed_away", "pending", "triggered"
+ARMED_HOME = "armed_home"   # people are home: outdoor activity warns, indoors is ignored, nothing goes off
 
 
 class AlarmConfig(BaseModel):
@@ -65,9 +66,21 @@ class Alarm:
             except Exception:
                 log.exception("alarm state callback failed")
 
+    async def arm_home(self) -> None:
+        """Armed at home: no exit delay (you stay in), no away mode, no deterrence; suspicious outdoor
+        activity is pushed."""
+        if self.state == ARMED_HOME:
+            return
+        if self.state != DISARMED:
+            await self.disarm()
+        await self.engine.set_home_armed(True)
+        await self._set_state(ARMED_HOME)
+
     async def arm(self) -> None:
         if self.state in (ARMING, ARMED, PENDING, TRIGGERED):
             return
+        if self.state == ARMED_HOME:
+            await self.engine.set_home_armed(False)
         self.spent = False
         self.db.set_setting("alarm_spent", "0")
         if self.ac.exit_delay > 0:
@@ -92,6 +105,8 @@ class Alarm:
         if self._task:
             self._task.cancel()
             self._task = None
+        if self.engine.home_armed:
+            await self.engine.set_home_armed(False)
         await self._set_state(DISARMED)
         if self.engine.away:
             await self.engine.set_away(False)
@@ -99,7 +114,9 @@ class Alarm:
     async def command(self, cmd: str) -> None:
         """Home Assistant alarm panel commands."""
         cmd = cmd.upper()
-        if cmd in ("ARM_AWAY", "ARM_HOME", "ARM_NIGHT", "ARM_VACATION", "ARM_CUSTOM_BYPASS"):
+        if cmd in ("ARM_HOME", "ARM_NIGHT"):
+            await self.arm_home()
+        elif cmd in ("ARM_AWAY", "ARM_VACATION", "ARM_CUSTOM_BYPASS"):
             await self.arm()
         elif cmd == "DISARM":
             await self.disarm()

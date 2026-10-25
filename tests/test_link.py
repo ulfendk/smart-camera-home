@@ -40,3 +40,27 @@ def test_follows_home_assistant_and_reports_back_without_echo():
         await link._apply("input_boolean.alarm", False)          # HA confirms: nothing more to do
         assert len(sent) == 1 and alarm.state == "disarmed"
     asyncio.run(go())
+
+
+
+def test_armed_home_is_not_mirrored_and_not_undone():
+    async def go():
+        cfg = load_config(TEST_CONFIG)
+        cfg.paths.data = Path(tempfile.mkdtemp())
+        cfg.ha.alarm_entity = "input_boolean.alarm"
+        db = Database(cfg.paths.data / "t.db")
+        engine = EventEngine(cfg, db, RulesConfig())
+        alarm = Alarm(cfg, db, engine, AlarmConfig(exit_delay=0, entry_delay=0), outputs={})
+        link = HaLink(cfg, engine, alarm)
+        sent = []
+
+        class FakeWs:
+            async def send(self, m): sent.append(m)
+        link.ws = FakeWs()
+        await alarm.arm_home()
+        assert sent == []                                   # the doors are not locked by "Alarm til"
+        await link._apply("input_boolean.alarm", False)    # the boolean is off: armed home stays
+        assert alarm.state == "armed_home"
+        await link._apply("input_boolean.alarm", True)     # leaving via the keypad: away takes over
+        assert alarm.state == "armed_away"
+    asyncio.run(go())

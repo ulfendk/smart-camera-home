@@ -41,7 +41,7 @@ def discovery_messages(cfg: Config) -> list[tuple[str, dict]]:
             "default_entity_id": f"camera.smartcam_{name}_snapshot", "topic": f"{p}/{name}/snapshot", "device": device, **avail}))
     msgs.append((f"{d}/alarm_control_panel/smartcam/alarm/config", {
         "name": "Alarm", "unique_id": "smartcam_alarm", "default_entity_id": "alarm_control_panel.smartcam_alarm",
-        "state_topic": f"{p}/alarm/state", "command_topic": f"{p}/alarm/set", "supported_features": ["arm_away"],
+        "state_topic": f"{p}/alarm/state", "command_topic": f"{p}/alarm/set", "supported_features": ["arm_away", "arm_home"],
         "code_arm_required": False, "code_disarm_required": False, "device": device, **avail}))
     for name, cam in cfg.cameras.items():
         if cam.speed:

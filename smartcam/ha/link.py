@@ -1,9 +1,10 @@
 """Follow existing Home Assistant entities for alarm and away mode, both ways.
 
 Many homes already have an alarm switch (an input_boolean set by a keypad, scripts and automations).
-With `ha.alarm_entity` set, SmartCam arms and disarms with it, and arming or disarming SmartCam from its
+With `ha.alarm_entity` set, SmartCam arms (away) and disarms with it, and arming or disarming SmartCam from its
 own panel or web UI sets that entity, so keypads, locks and presence simulation stay in step.
 `ha.away_entity` does the same for away mode. Home Assistant is the source of truth at startup.
+SmartCam's "armed home" is its own: it neither sets the entity nor is undone by it being off.
 """
 
 import asyncio
@@ -19,6 +20,7 @@ log = logging.getLogger(__name__)
 
 ON_STATES = {"on", "armed_away", "armed_home", "armed_night", "armed_vacation", "armed_custom_bypass",
              "triggered", "arming", "pending"}
+AWAY_STATES = {"arming", "armed_away", "pending", "triggered"}   # SmartCam states the alarm entity mirrors
 
 
 def is_on(state: str | None) -> bool | None:
@@ -62,7 +64,7 @@ class HaLink:
             return
         self.ha_states[entity] = on
         if entity == self.alarm_entity and self.alarm is not None:
-            armed = self.alarm.state != "disarmed"
+            armed = self.alarm.state in AWAY_STATES
             if on and not armed:
                 log.info("arming: %s turned on", entity)
                 await self.alarm.arm()
@@ -82,7 +84,9 @@ class HaLink:
                           "target": {"entity_id": entity}})
 
     async def _alarm_changed(self, state: str) -> None:
-        await self._set_ha(self.alarm_entity, state != "disarmed")
+        if state == "armed_home":
+            return   # SmartCam's own mode; the entity stays as it is
+        await self._set_ha(self.alarm_entity, state in AWAY_STATES)
 
     async def _away_changed(self, away: bool) -> None:
         await self._set_ha(self.away_entity, away)

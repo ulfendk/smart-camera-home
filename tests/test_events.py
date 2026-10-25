@@ -52,6 +52,17 @@ def test_quick_night_passerby_while_home_is_not_notified():
     assert e.score == 2 and not should_notify(e, False, MIDNIGHT, RULES)
 
 
+def test_armed_home_warns_about_outdoor_activity_and_ignores_indoors():
+    e = ev(); e.score, e.reasons = score_event(e, NOON, False, RULES, [], home_armed=True)
+    assert e.score == 3 and "armed at home" in e.reasons and not should_notify(e, False, NOON, RULES, home_armed=True)
+    e = ev(door=45); e.score, e.reasons = score_event(e, NOON, False, RULES, [], home_armed=True)
+    assert e.score == 6 and should_notify(e, False, NOON, RULES, home_armed=True)    # loitering at the door by day
+    e = ev(); e.score, e.reasons = score_event(e, MIDNIGHT, False, RULES, [], home_armed=True)
+    assert e.score == 4 and should_notify(e, False, MIDNIGHT, RULES, home_armed=True) # anyone outside at night
+    e = ev("indoor"); e.score, e.reasons = score_event(e, MIDNIGHT, False, RULES, [], home_armed=True)
+    assert e.score == 2 and not should_notify(e, False, MIDNIGHT, RULES, home_armed=True)
+
+
 def test_cross_camera_sequence_adds_suspicion():
     e = scored(ev(), MIDNIGHT, away=False, others=["driveway"])
     assert "seen on driveway just before" in e.reasons and e.score == 3

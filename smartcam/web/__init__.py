@@ -138,15 +138,15 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
 
     @app.post("/api/alarm/{command}")
     async def post_alarm(command: str) -> dict:
-        """arm_away, disarm, or trigger (a test of the deterrence)."""
+        """arm_away, arm_home, disarm, or trigger (a test of the deterrence)."""
         if alarm is None:
             raise HTTPException(404, "alarm mode is off")
         if command == "trigger":
             await alarm.trigger("triggered from the web UI", delay=0)   # a test: no entry delay
-        elif command in ("arm_away", "disarm"):
+        elif command in ("arm_away", "arm_home", "disarm"):
             await alarm.command(command)
         else:
-            raise HTTPException(400, "command must be arm_away, disarm or trigger")
+            raise HTTPException(400, "command must be arm_away, arm_home, disarm or trigger")
         return {"state": alarm.state}
 
     @app.post("/api/ha/cameras")

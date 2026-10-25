@@ -28,6 +28,8 @@
   .alarm { font: inherit; font-weight: 500; padding: 6px 14px; border-radius: 16px; border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; }
   .alarm[data-state="armed_away"], .alarm[data-state="arming"] { color: #fff; background: var(--primary); border-color: var(--primary); }
   .alarm[data-state="pending"] { color: #fff; background: var(--warn); border-color: var(--warn); }
+  .alarm[data-state="armed_home"] { color: #fff; background: var(--ok); border-color: var(--ok); }
+  .arm-menu { position: absolute; right: 0; top: 40px; display: flex; gap: 6px; padding: 8px; background: var(--card); border-radius: 12px; box-shadow: var(--shadow); z-index: 10; white-space: nowrap; }
   .alarm[data-state="triggered"] { color: #fff; background: var(--error); border-color: var(--error); animation: pulse 1s infinite; }
   @keyframes pulse { 50% { opacity: .6; } }
   main { padding: 16px; max-width: 1400px; margin: 0 auto; }
@@ -103,7 +105,8 @@
     <button id="tab-settings" aria-pressed="false">Settings</button>
   </nav>
   <div class="away" id="away" role="switch" aria-checked="false" tabindex="0"><span id="away-label">Home</span><span class="switch"></span></div>
-  <button class="alarm" id="alarm" hidden title="Arm or disarm the alarm">Alarm off</button>
+  <span style="position:relative"><button class="alarm" id="alarm" hidden title="Arm or disarm the alarm">Alarm off</button>
+    <span class="arm-menu" id="arm-menu" hidden><button class="chip" data-cmd="arm_away">Arm away</button><button class="chip" data-cmd="arm_home">Arm home</button></span></span>
 </header>
 <main>
   <section id="live" class="grid"></section>
@@ -144,7 +147,7 @@ $("away").onclick = toggleAway;
 $("away").onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleAway(); } };
 
 // --- alarm -----------------------------------------------------------------------------------------
-const ALARM_LABEL = {disarmed: "Alarm off", arming: "Arming…", armed_away: "Alarm armed", pending: "Disarm now!", triggered: "ALARM"};
+const ALARM_LABEL = {disarmed: "Alarm off", arming: "Arming…", armed_away: "Armed away", armed_home: "Armed home", pending: "Disarm now!", triggered: "ALARM"};
 async function loadAlarm() {
   const {state} = await (await fetch("api/alarm")).json();
   $("alarm").hidden = state === "unavailable";
@@ -152,8 +155,13 @@ async function loadAlarm() {
   $("alarm").textContent = ALARM_LABEL[state] || state;
 }
 $("alarm").onclick = async () => {
-  const cmd = $("alarm").dataset.state === "disarmed" ? "arm_away" : "disarm";
-  await fetch("api/alarm/" + cmd, {method: "POST"});
+  if ($("alarm").dataset.state === "disarmed") { $("arm-menu").hidden = !$("arm-menu").hidden; return; }
+  await fetch("api/alarm/disarm", {method: "POST"});
+  await loadAlarm(); loadAway();
+};
+for (const b of document.querySelectorAll("#arm-menu [data-cmd]")) b.onclick = async () => {
+  $("arm-menu").hidden = true;
+  await fetch("api/alarm/" + b.dataset.cmd, {method: "POST"});
   await loadAlarm(); loadAway();
 };
 setInterval(() => { loadAlarm(); loadAway(); }, 10000);
@@ -257,7 +265,7 @@ const SECTIONS = [
     ["lights.cooldown", "Cooldown (s)", "number", 20],
     ["lights.dark_threshold", "Dark below (0-255)", "number", 70, "mean image brightness"],
   ]},
-  {title: "Alarm", desc: "Arm from Home Assistant (alarm_control_panel.smartcam_alarm) or the button at the top. While armed, an event reaching the trigger score flashes the red/blue warning lights, then the alarm stays quiet until it is disarmed and armed again.", test: true, fields: [
+  {title: "Alarm", desc: "Arm from Home Assistant (alarm_control_panel.smartcam_alarm) or the button at the top. Armed away: an event reaching the trigger score flashes the red/blue warning lights, then the alarm stays quiet until it is disarmed and armed again. Armed home: indoors is ignored, suspicious activity outside is pushed, nothing goes off.", test: true, fields: [
     ["alarm.enabled", "Alarm mode", "bool", true],
     ["alarm.trigger_score", "Trigger at score", "number", 8, "a person indoors while away scores 10"],
     ["alarm.exit_delay", "Exit delay (s)", "number", 60, "after arming, time to leave before it is active"],

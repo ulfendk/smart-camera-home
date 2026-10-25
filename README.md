@@ -99,7 +99,8 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   a serious event while armed (by default a person indoors, or loitering at a door at night) flashes
   the Dahua red/blue warning lights for 15 minutes, then stays quiet until disarmed and armed again.
   Arming has an exit delay (60 s) and a trigger an entry delay (30 s, "pending") in which disarming cancels it;
-  only activity that starts after arming counts.
+  only activity that starts after arming counts. **Armed home** (e.g. at night) ignores indoors and pushes
+  suspicious activity outside (anyone outside at night, loitering by day), without setting anything off.
 
 ## Configuration
 
@@ -161,7 +162,6 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 
 ## Roadmap
 
-- "Armed home": a third alarm state that warns about suspicious behaviour outside while people are home
 - At home: no indoor recording, but room occupancy from the indoor cameras for Home Assistant's lights
 - Reading licence plates (OCR) on speed events
 

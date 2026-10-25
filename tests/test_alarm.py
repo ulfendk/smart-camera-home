@@ -118,3 +118,17 @@ def test_entry_delay_lets_you_disarm_before_anything_happens():
         await asyncio.sleep(0.4)
         assert alarm.state == DISARMED and out.calls == []   # no lights, no alarm push
     asyncio.run(go())
+
+
+def test_armed_home_never_goes_off_and_switches_cleanly():
+    async def go():
+        alarm, engine, out = setup()
+        await alarm.command("ARM_HOME")
+        assert alarm.state == "armed_home" and engine.home_armed and not engine.away
+        await alarm._scored(event(10))                      # nothing triggers at home
+        assert alarm.state == "armed_home" and out.calls == []
+        await alarm.command("ARM_AWAY")                     # leaving: away takes over
+        assert alarm.state == ARMED and not engine.home_armed and engine.away
+        await alarm.disarm()
+        assert alarm.state == DISARMED and not engine.home_armed and not engine.away
+    asyncio.run(go())

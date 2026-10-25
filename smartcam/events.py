@@ -62,13 +62,16 @@ def is_night(ts: float, rules: RulesConfig) -> bool:
 
 
 def score_event(ev: OpenEvent, now: float, away: bool, rules: RulesConfig,
-                recent_other: list[str]) -> tuple[float, list[str]]:
+                recent_other: list[str], home_armed: bool = False) -> tuple[float, list[str]]:
     score, reasons = 1.0, ["person"]
     if away:
         if ev.location == "indoor":
             return 10.0, ["person indoors while away"]
         score += 3
         reasons.append("away")
+    elif home_armed and ev.location == "outdoor":
+        score += 2
+        reasons.append("armed at home")
     if is_night(now, rules):
         score += 1
         reasons.append("night")
@@ -86,11 +89,11 @@ def score_event(ev: OpenEvent, now: float, away: bool, rules: RulesConfig,
     return score, reasons
 
 
-def should_notify(ev: OpenEvent, away: bool, now: float, rules: RulesConfig) -> bool:
+def should_notify(ev: OpenEvent, away: bool, now: float, rules: RulesConfig, home_armed: bool = False) -> bool:
     if ev.score < rules.notify_score:
         return False
-    # At home only outdoor night-time events are worth a push; daytime and indoor are family.
-    return away or (ev.location == "outdoor" and is_night(now, rules))
+    # At home indoor events are family. Outdoors: at night, or at any time when armed at home.
+    return away or (ev.location == "outdoor" and (home_armed or is_night(now, rules)))
 
 
 def _in_zone(point: tuple[float, float], poly: list[tuple[float, float]]) -> bool:
@@ -121,6 +124,16 @@ class EventEngine:
     @property
     def away(self) -> bool:
         return self.db.get_setting("away", "0") == "1"
+
+    @property
+    def home_armed(self) -> bool:
+        return self.db.get_setting("home_armed", "0") == "1"
+
+    async def set_home_armed(self, armed: bool) -> None:
+        self.db.set_setting("home_armed", "1" if armed else "0")
+        if armed:
+            self.db.set_setting("away_since", str(time.time()))   # only new activity counts, as for away
+        log.info("armed at home %s", "on" if armed else "off")
 
     @property
     def away_since(self) -> float:
@@ -206,7 +219,8 @@ class EventEngine:
         self.recent_starts = [(ts, c) for ts, c in self.recent_starts if ts >= now - 3600]
         others = sorted({c for ts, c in self.recent_starts if c != ev.camera and cutoff <= ts <= ev.start})
         before = ev.score
-        ev.score, ev.reasons = score_event(ev, now, self.away, self.rules, others)
+        home = self.home_armed
+        ev.score, ev.reasons = score_event(ev, now, self.away, self.rules, others, home_armed=home)
         if ev.score > before:
             for cb in self.on_score:
                 try:
@@ -216,8 +230,8 @@ class EventEngine:
         self.db.update_event(ev.id, score=ev.score, reasons=ev.reasons, zones=sorted(ev.zone_dwell),
                              max_score=ev.best_score)
         # While away, only activity that started after away mode began is news (not the people leaving).
-        fresh = not self.away or ev.start >= self.away_since
-        if not ev.notified and fresh and should_notify(ev, self.away, now, self.rules):
+        fresh = not (self.away or home) or ev.start >= self.away_since
+        if not ev.notified and fresh and should_notify(ev, self.away, now, self.rules, home_armed=home):
             ev.notified = True
             self.db.update_event(ev.id, notified=1)
             event = self.db.event(ev.id)
