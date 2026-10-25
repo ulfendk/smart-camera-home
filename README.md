@@ -88,6 +88,9 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   Assistant's light history into SmartCam's own library (so it outlives the recorder). Hand-switched lights
   are left alone; on disarm only its own lights are switched off. Settings → Presence simulation previews
   today's plan.
+- Lights on people after dark: a camera's `person_lights` (Home Assistant lights) go to full brightness while a
+  person is there after dark (sun below the horizon, or a lux sensor), and return to exactly how they were two
+  minutes after the person has gone.
 - Vehicle speed: draw Speed line A and B across the road in a camera's zone editor and enter the distance
   between them. Each passing vehicle becomes an event with its speed, a full-resolution best shot and a
   close-up for the plate and driver; `sensor.smartcam_<camera>_vehicle_speed` in Home Assistant, and a push
@@ -159,7 +162,6 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 ## Roadmap
 
 - "Armed home": a third alarm state that warns about suspicious behaviour outside while people are home
-- Outdoor lights to 100% for a short while when a person is detected outside after dark (Home Assistant lights)
 - Reading licence plates (OCR) on speed events
 - Siren for cameras that refuse the siren command (e.g. by switching on the camera's own "play
   alarm sound" event rule while the alarm is active)

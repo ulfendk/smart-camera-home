@@ -27,6 +27,7 @@ cameras:
     ip: 192.0.2.11
     record: *dahua_main
     detect: *dahua_sub
+    person_lights: [light.driveway, light.garage_wall]   # to full while a person is here after dark
 
   living_room:
     location: indoor
@@ -84,6 +85,10 @@ presence:               # presence simulation while the alarm is armed (needs th
   lights: [light.kitchen, light.living_room, light.hall]
   jitter_minutes: 20    # the whole evening moves by up to this
   bedtime: "23:00"      # stays at clock time as the season changes
+
+person_lights:          # timing for the cameras' person_lights (needs the ha section)
+  seconds: 120          # back to how they were this long after the person has gone
+  dark_entity: null     # e.g. a lux sensor; default: the sun below the horizon
 
 paths:
   data: data            # recordings, clips, db; relative to the install dir

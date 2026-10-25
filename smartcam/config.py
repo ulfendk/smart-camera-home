@@ -47,6 +47,7 @@ class CameraConfig(BaseModel):
     motion_mask: list[tuple[float, float]] | None = None
     power_switch: str | None = None   # HA switch powering the camera, cycled when its stream dies (Dahua: rebooted)
     speed: dict | None = None         # vehicle speed calibration, validated by speed.SpeedConfig
+    person_lights: list[str] = []     # HA lights to full while a person is here after dark
 
     @field_validator("zones", mode="before")
     @classmethod
@@ -136,6 +137,7 @@ class Config(BaseModel):
     watchdog: dict = {}  # validated by power.WatchdogConfig
     alarm: dict = {}  # validated by alarm.AlarmConfig
     presence: dict = {}  # validated by presence.PresenceConfig
+    person_lights: dict = {}  # validated by ha.person_lights.PersonLightsConfig
     path: Path | None = None  # the file this was loaded from (the settings UI writes it)
 
 
@@ -175,7 +177,7 @@ def load_config(path: Path | None = None) -> Config:
     mqtt = {k: _expand_env(v) if isinstance(v, str) else v for k, v in raw["mqtt"].items()}
     ha = {k: _expand_env(v) if isinstance(v, str) else v for k, v in raw.get("ha", {}).items()}
     cfg = Config(cameras=cameras, mqtt=mqtt, ha=ha, path=path,
-                 **{k: raw[k] for k in ("paths", "record", "detect", "go2rtc", "web", "rules", "lights", "watchdog", "alarm", "presence") if k in raw})
+                 **{k: raw[k] for k in ("paths", "record", "detect", "go2rtc", "web", "rules", "lights", "watchdog", "alarm", "presence", "person_lights") if k in raw})
     # Relative paths are relative to the repo root, not the working directory.
     if not cfg.paths.data.is_absolute():
         cfg.paths.data = ROOT / cfg.paths.data

@@ -38,6 +38,10 @@ async def main() -> None:
         if cfg.ha.alarm_entity or cfg.ha.away_entity:
             from .ha.link import HaLink
             link = HaLink(cfg, engine, alarm)
+    if cfg.ha.enabled and any(c.person_lights for c in cfg.cameras.values()):
+        from .ha.person_lights import PersonLights, PersonLightsConfig
+        if PersonLightsConfig(**cfg.person_lights).enabled:
+            PersonLights(cfg, engine)
     presence = None
     from .presence import PresenceConfig, PresenceSimulator
     pc = PresenceConfig(**cfg.presence)

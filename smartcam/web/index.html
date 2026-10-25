@@ -278,6 +278,13 @@ const SECTIONS = [
     ["presence.max_on_hours", "Longest a light stays on (h)", "number", 4],
     ["presence.extra_holidays", "Extra holidays (MM-DD)", "list", [], "treated like public holidays (latest Sunday), e.g. 12-24, 12-31"],
   ]},
+  {title: "Lights on people after dark", desc: "Each camera's \"Lights on a person after dark\" go to full brightness while a person is there after dark, and return to exactly how they were afterwards.", fields: [
+    ["person_lights.enabled", "Enabled", "bool", true],
+    ["person_lights.brightness", "Brightness (%)", "number", 100],
+    ["person_lights.seconds", "Back after (s)", "number", 120, "after the person has gone"],
+    ["person_lights.dark_entity", "Darkness sensor", "text", "", "e.g. a lux sensor; empty: the sun below the horizon"],
+    ["person_lights.dark_below", "Dark below", "number", 50],
+  ]},
   {title: "Watchdog", desc: "Restart a camera whose stream died: power-cycle its smart plug through Home Assistant, or reboot a Dahua through its API.", fields: [
     ["watchdog.enabled", "Enabled", "bool", true],
     ["watchdog.stale_seconds", "Dead after (s)", "number", 120, "without frames"],
@@ -294,6 +301,7 @@ const CAMERA_FIELDS = [
   ["record", "Recording stream", "text", "", "main stream, e.g. rtsp://${CAM_USER}:${CAM_PASS}@{ip}:554/live", null, true],
   ["detect", "Detection stream", "text", "", "sub stream; the same as the recording stream = one connection to the camera", null, true],
   ["power_switch", "Power switch", "text", "", "HA switch powering the camera, e.g. switch.camera_plug"],
+  ["person_lights", "Lights on a person after dark", "list", [], "Home Assistant lights to full while a person is here after dark, comma-separated"],
   ["speed.distance_m", "Speed: distance between the lines (m)", "number", "", "draw Speed line A and B under Zones & masks"],
   ["speed.limit_kmh", "Speed limit (km/h)", "number", ""],
   ["speed.notify_over_kmh", "Notify from (km/h)", "number", "", "push notification for vehicles at or above this speed"],
