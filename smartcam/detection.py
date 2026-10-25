@@ -11,6 +11,7 @@ from .ingest import Frame, live_frames
 from .lights.controller import LightController, LightsConfig
 from .lights.dahua import DahuaLight
 from .pipeline import CameraPipeline
+from .power import PowerWatchdog
 from .static_map import StaticMap
 
 log = logging.getLogger(__name__)
@@ -38,7 +39,8 @@ async def make_light(cfg: Config, cam: CameraConfig) -> LightController | None:
     return LightController(lights, light, cam.name)
 
 
-async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngine) -> None:
+async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngine,
+                     watchdog: PowerWatchdog | None = None) -> None:
     static_map = StaticMap(cfg.paths.data / "static_map" / f"{cam.name}.npz")
     pipeline = CameraPipeline(cam, detector, static_map)
     slot: asyncio.Queue[Frame] = asyncio.Queue(maxsize=1)
@@ -49,6 +51,8 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
     try:
         while True:
             frame = await slot.get()
+            if watchdog is not None:
+                watchdog.seen(cam.name)
             t0 = time.monotonic()
             res = await asyncio.to_thread(pipeline.process, frame)
             stats["busy"] += time.monotonic() - t0
@@ -72,10 +76,10 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
             await light.light.off()
 
 
-async def run(cfg: Config, engine: EventEngine) -> None:
+async def run(cfg: Config, engine: EventEngine, watchdog: PowerWatchdog | None = None) -> None:
     from .detect.yolo import YoloDetector  # imported here so the recorder-only tools don't load onnxruntime
 
     detector = await asyncio.to_thread(YoloDetector, cfg.detect.model)
     async with asyncio.TaskGroup() as tg:
         for cam in cfg.cameras.values():
-            tg.create_task(run_camera(cfg, cam, detector, engine))
+            tg.create_task(run_camera(cfg, cam, detector, engine, watchdog))

@@ -29,6 +29,7 @@ cameras:
     detect: "rtsp://${CAM_USER}:${CAM_PASS}@{ip}:554/live/ch1"
     person_mask: [0,0.8, 0.3,0.8, 0.3,1, 0,1]   # people whose feet are in here are ignored
     motion_mask: [0.4,0, 0.6,0, 0.6,0.2, 0.4,0.2]
+    power_switch: switch.living_room_camera_plug   # optional: power-cycled through HA when the stream dies
 
 mqtt:
   enabled: false
@@ -52,6 +53,12 @@ lights:
   cameras: []           # empty = every outdoor Dahua uses its own white light
   on_seconds: 60
   dark_threshold: 70
+
+watchdog:               # for cameras with power_switch (needs the ha section)
+  stale_seconds: 120    # no frames for this long = dead stream
+  off_seconds: 10
+  cooldown_minutes: 30
+  max_per_day: 4
 
 paths:
   data: data            # recordings, clips, db; relative to the install dir
