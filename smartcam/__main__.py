@@ -8,7 +8,7 @@ import sys
 
 import uvicorn
 
-from . import detection, go2rtc, recorder, retention
+from . import detection, go2rtc, recorder, retention, timesync
 from .config import load_config
 from .db import Database
 from .alarm import Alarm, AlarmConfig
@@ -62,6 +62,7 @@ async def main() -> None:
             await asyncio.sleep(2)  # let go2rtc open its RTSP port before anything connects
             tg.create_task(recorder.run(cfg, should_record=lambda name: engine.away))
             tg.create_task(retention.run(cfg, db))
+            tg.create_task(timesync.run(cfg))
             tg.create_task(detection.run(cfg, engine, watchdog))
             if watchdog is not None:
                 tg.create_task(watchdog.run())

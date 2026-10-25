@@ -33,6 +33,16 @@
   .alarm[data-state="triggered"] { color: #fff; background: var(--error); border-color: var(--error); animation: pulse 1s infinite; }
   @keyframes pulse { 50% { opacity: .6; } }
   main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 640px) {
+    /* two rows on phones: title + home/alarm, then the tabs across the full width */
+    header { height: auto; flex-wrap: wrap; gap: 6px 10px; padding: 8px 12px; }
+    h1 { font-size: 18px; }
+    nav { order: 3; width: 100%; }
+    nav button { flex: 1; padding: 8px 4px; }
+    .away { gap: 6px; }
+    .alarm { padding: 5px 10px; font-size: 13px; }
+    main { padding: 12px; }
+  }
   .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
   figure, .card { margin: 0; background: var(--card); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
   figcaption { padding: 8px 12px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: center; }

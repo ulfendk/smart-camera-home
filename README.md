@@ -92,6 +92,8 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   you're home; they record again when armed away. Every camera still reports room occupancy,
   `binary_sensor.smartcam_<camera>_occupied`, for Home Assistant's lights (people sitting still included,
   nothing stored).
+- Camera clocks: Dahua clocks are set to this machine's time when they drift (every 6 hours), ONVIF cameras
+  (`onvif_port`) get this machine's time zone, so the time in the picture is right.
 - Lights on people after dark: a camera's `person_lights` (Home Assistant lights) go to full brightness while a
   person is there after dark (sun below the horizon, or a lux sensor), and return to exactly how they were two
   minutes after the person has gone.
