@@ -60,7 +60,7 @@ async def main() -> None:
         async with asyncio.TaskGroup() as tg:
             tg.create_task(go2rtc.run(cfg))
             await asyncio.sleep(2)  # let go2rtc open its RTSP port before anything connects
-            tg.create_task(recorder.run(cfg))
+            tg.create_task(recorder.run(cfg, should_record=lambda name: engine.away))
             tg.create_task(retention.run(cfg, db))
             tg.create_task(detection.run(cfg, engine, watchdog))
             if watchdog is not None:

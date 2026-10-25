@@ -118,6 +118,7 @@ class EventEngine:
         self.on_away: list[Callable[[bool], Awaitable[None]]] = []
         self.on_score: list[Callable[[OpenEvent], Awaitable[None]]] = []   # when an event's score rises
         self.on_speed: list[Notifier] = []   # a vehicle speed event, once its best shot is in
+        self.on_occupancy: list[Callable[[str, bool], Awaitable[None]]] = []   # (camera, occupied)
         self.snapshots = cfg.paths.data / "snapshots"
         self.clips = cfg.paths.data / "clips"
 

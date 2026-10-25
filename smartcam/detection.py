@@ -17,6 +17,8 @@ from .static_map import StaticMap
 
 log = logging.getLogger(__name__)
 
+OCCUPANCY_HOLD = 60   # seconds a room stays occupied after the last sighting
+
 
 async def _latest(cfg: Config, camera: str, slot: asyncio.Queue) -> None:
     """Keep only the newest frame in `slot`, so a slow consumer processes fresh frames, not a backlog."""
@@ -56,6 +58,7 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
     speed = SpeedConfig(**(cam.speed or {}))
     meter = SpeedMeter(cam.name, speed) if speed.ready else None
     last_save = 0.0
+    occupied, last_person = False, float("-inf")
     stats = {"frames": 0, "detects": 0, "busy": 0.0, "since": time.monotonic()}
     try:
         while True:
@@ -72,12 +75,21 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
                          cam.name, stats["frames"] / elapsed, 100 * stats["detects"] / max(stats["frames"], 1),
                          1000 * stats["busy"] / max(stats["frames"], 1), len(res.tracks))
                 stats = {"frames": 0, "detects": 0, "busy": 0.0, "since": time.monotonic()}
-            await engine.handle(res)
-            if meter is not None:
-                for reading in meter.update(res.tracks):
-                    await engine.record_speed(reading, frame)
-            if light is not None:
-                await light.handle(res, pipeline.confirmed_ids)
+            # Occupancy: a confirmed person seen recently, sitting still included. Nothing is stored for it.
+            if any(t.label == "person" and t.id in pipeline.confirmed_ids and t.last_ts == frame.ts for t in res.tracks):
+                last_person = frame.ts
+            now_occupied = frame.ts - last_person < OCCUPANCY_HOLD
+            if now_occupied != occupied:
+                occupied = now_occupied
+                for cb in engine.on_occupancy:
+                    await cb(cam.name, occupied)
+            if cam.record_at_home or engine.away:   # else privacy at home: no events, snapshots or clips
+                await engine.handle(res)
+                if meter is not None:
+                    for reading in meter.update(res.tracks):
+                        await engine.record_speed(reading, frame)
+                if light is not None:
+                    await light.handle(res, pipeline.confirmed_ids)
             if frame.ts - last_save > 600:
                 last_save = frame.ts
                 static_map.save()

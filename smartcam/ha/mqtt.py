@@ -36,6 +36,10 @@ def discovery_messages(cfg: Config) -> list[tuple[str, dict]]:
         msgs.append((f"{d}/binary_sensor/smartcam/{name}_person/config", {
             "name": f"{name} person", "unique_id": f"smartcam_{name}_person", "default_entity_id": f"binary_sensor.smartcam_{name}_person",
             "device_class": "occupancy", "state_topic": f"{p}/{name}/person", "device": device, **avail}))
+        msgs.append((f"{d}/binary_sensor/smartcam/{name}_occupied/config", {
+            "name": f"{name} occupied", "unique_id": f"smartcam_{name}_occupied",
+            "default_entity_id": f"binary_sensor.smartcam_{name}_occupied", "device_class": "occupancy",
+            "state_topic": f"{p}/{name}/occupied", "device": device, **avail}))
         msgs.append((f"{d}/camera/smartcam/{name}_snapshot/config", {
             "name": f"{name} snapshot", "unique_id": f"smartcam_{name}_snapshot",
             "default_entity_id": f"camera.smartcam_{name}_snapshot", "topic": f"{p}/{name}/snapshot", "device": device, **avail}))
@@ -69,6 +73,7 @@ class HaMqtt:
         engine.on_alert.insert(0, self._publish_alert_image)
         engine.on_clip.insert(0, self._publish_alert_image)
         engine.on_away.append(self._publish_away)
+        engine.on_occupancy.append(self._publish_occupancy)
         engine.on_speed.insert(0, self._publish_speed)   # before the notifier, which shows its image
         if alarm is not None:
             alarm.on_state.append(self._publish_alarm)
@@ -87,6 +92,7 @@ class HaMqtt:
                     await self._publish_away(self.engine.away)
                     for name in self.cfg.cameras:
                         await client.publish(f"{p}/{name}/person", "OFF", retain=True)
+                        await client.publish(f"{p}/{name}/occupied", "OFF", retain=True)
                     await client.subscribe(f"{p}/away/set")
                     if self.alarm is not None:
                         await self._publish_alarm(self.alarm.state)
@@ -113,6 +119,9 @@ class HaMqtt:
             {"label": event["label"], "event_id": event["id"], "direction": event["reasons"][-1], "at": event["start_ts"]}))
         await self._publish(f"{cam}/vehicle_speed", str(event["speed"]))
         await self._publish_alert_image(event)
+
+    async def _publish_occupancy(self, camera: str, occupied: bool) -> None:
+        await self._publish(f"{camera}/occupied", "ON" if occupied else "OFF")
 
     async def _publish_alarm(self, state: str) -> None:
         await self._publish("alarm/state", state)

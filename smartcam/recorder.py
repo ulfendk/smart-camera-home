@@ -68,14 +68,21 @@ def hour_dirs(cfg: Config) -> list[tuple[float, Path]]:
     return sorted(found)
 
 
-async def run(cfg: Config) -> None:
+async def run(cfg: Config, should_record=lambda name: True) -> None:
+    """Record every camera; cameras with `record_at_home: false` only while `should_record` says so."""
     ensure_dirs(cfg)
-    tasks = [asyncio.create_task(supervise(f"record:{name}", lambda cam=cam: ffmpeg_args(cfg, cam)))
-             for name, cam in cfg.cameras.items()]
+    tasks: dict[str, asyncio.Task] = {}
     try:
         while True:
             ensure_dirs(cfg)
-            await asyncio.sleep(60)
+            for name, cam in cfg.cameras.items():
+                want = cam.record_at_home or should_record(name)
+                if want and name not in tasks:
+                    tasks[name] = asyncio.create_task(supervise(f"record:{name}", lambda cam=cam: ffmpeg_args(cfg, cam)))
+                elif not want and name in tasks:
+                    log.info("record:%s paused (at home)", name)
+                    tasks.pop(name).cancel()
+            await asyncio.sleep(10)
     finally:
-        for t in tasks:
+        for t in tasks.values():
             t.cancel()

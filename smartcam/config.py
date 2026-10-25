@@ -48,6 +48,7 @@ class CameraConfig(BaseModel):
     power_switch: str | None = None   # HA switch powering the camera, cycled when its stream dies (Dahua: rebooted)
     speed: dict | None = None         # vehicle speed calibration, validated by speed.SpeedConfig
     person_lights: list[str] = []     # HA lights to full while a person is here after dark
+    record_at_home: bool = True       # False: no recording, events or snapshots unless armed away (privacy)
 
     @field_validator("zones", mode="before")
     @classmethod

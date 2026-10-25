@@ -37,6 +37,7 @@ cameras:
     person_mask: [0,0.8, 0.3,0.8, 0.3,1, 0,1]   # people whose feet are in here are ignored
     motion_mask: [0.4,0, 0.6,0, 0.6,0.2, 0.4,0.2]
     power_switch: switch.living_room_camera_plug   # optional: power-cycled through HA when the stream dies
+    record_at_home: false      # privacy: nothing recorded or stored unless armed away
 
 mqtt:
   enabled: false

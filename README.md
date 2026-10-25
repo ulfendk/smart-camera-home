@@ -88,6 +88,10 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   Assistant's light history into SmartCam's own library (so it outlives the recorder). Hand-switched lights
   are left alone; on disarm only its own lights are switched off. Settings → Presence simulation previews
   today's plan.
+- Privacy at home: cameras with `record_at_home: false` (e.g. indoors) record nothing and store no events while
+  you're home; they record again when armed away. Every camera still reports room occupancy,
+  `binary_sensor.smartcam_<camera>_occupied`, for Home Assistant's lights (people sitting still included,
+  nothing stored).
 - Lights on people after dark: a camera's `person_lights` (Home Assistant lights) go to full brightness while a
   person is there after dark (sun below the horizon, or a lux sensor), and return to exactly how they were two
   minutes after the person has gone.
@@ -162,7 +166,6 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 
 ## Roadmap
 
-- At home: no indoor recording, but room occupancy from the indoor cameras for Home Assistant's lights
 - Reading licence plates (OCR) on speed events
 
 ## License
