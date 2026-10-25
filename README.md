@@ -158,6 +158,8 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 
 ## Roadmap
 
+- "Armed home": a third alarm state that warns about suspicious behaviour outside while people are home
+- Outdoor lights to 100% for a short while when a person is detected outside after dark (Home Assistant lights)
 - Reading licence plates (OCR) on speed events
 - Siren for cameras that refuse the siren command (e.g. by switching on the camera's own "play
   alarm sound" event rule while the alarm is active)
