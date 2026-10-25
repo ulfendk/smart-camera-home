@@ -6,8 +6,8 @@ as SmartCam runs. Only days when people were home count: with `ha.alarm_entity` 
 evening was armed is skipped, so the simulation never learns from an empty house or from itself.
 Motion-sensor flicker is merged into visits and very short blips are dropped.
 
-Replaying: each armed day, one real evening of the same kind (weekday or weekend) is picked and all its
-lights are replayed together, shifted by up to `jitter_minutes` as a whole and `light_jitter_minutes`
+Replaying: each armed day, one real evening of the same kind is picked (Monday-Thursday, Friday,
+Saturday, Sunday; a public holiday replays the latest Sunday) and all its lights are replayed together, shifted by up to `jitter_minutes` as a whole and `light_jitter_minutes`
 per light, so rooms keep their real order. Times are warped to the season: sunrise and sunset of the
 recorded day map to today's, while midnight, midday and `bedtime` stay put, and everything between
 moves smoothly; lights that came on 20 minutes after dusk three weeks ago come on 20 minutes after
@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import holidays as holiday_calendars
 import httpx
 from pydantic import BaseModel
 
@@ -46,6 +47,8 @@ class PresenceConfig(BaseModel):
     max_on_hours: float = 4             # longer intervals are cut short
     bedtime: str = "23:00"              # stays at clock time when the season changes
     daylight_margin_minutes: float = 30 # intervals entirely in daylight (this far from sunrise/sunset) are skipped
+    holidays_country: str | None = None # public holidays count as Sundays; default: Home Assistant's country
+    extra_holidays: list[str] = []      # more days treated like holidays, as MM-DD (e.g. 12-24, 12-31)
 
 
 @dataclass
@@ -163,14 +166,37 @@ class Library:
 
 # --- planning ---------------------------------------------------------------------------------------
 
+FALLBACK = {"sunday": ["saturday"], "saturday": ["sunday"], "friday": ["weekday"], "weekday": ["friday"]}
+
+
+def holiday_set(country: str | None, extra: list[str], years: range) -> set[date]:
+    days = set(holiday_calendars.country_holidays(country, years=list(years)).keys()) if country else set()
+    for md in extra:
+        m, d = (int(x) for x in md.split("-"))
+        days |= {date(y, m, d) for y in years}
+    return days
+
+
+def kind(day: date, hols: set[date]) -> str:
+    """Which evenings are alike: holidays live like Sundays."""
+    if day in hols or day.weekday() == 6:
+        return "sunday"
+    return {5: "saturday", 4: "friday"}.get(day.weekday(), "weekday")
+
+
 def plan(day: date, library: list[dict], pc: PresenceConfig, sun: tuple[float, float], tz: ZoneInfo,
-         rng: random.Random) -> tuple[str | None, list[Action]]:
+         rng: random.Random, hols: set[date] = frozenset()) -> tuple[str | None, list[Action]]:
     """The switching plan for `day`: (source day, actions). Empty without a learned evening."""
-    weekend = day.weekday() >= 5
-    pool = [d for d in library if d["weekend"] == weekend] or library
-    if not pool:
+    if not library:
         return None, []
-    src = rng.choice(pool)
+    want = kind(day, hols)
+    of = lambda d: kind(date.fromisoformat(d["day"]), hols)
+    pool = [d for d in library if of(d) == want]
+    for other in FALLBACK[want]:
+        pool = pool or [d for d in library if of(d) == other]
+    pool = pool or library
+    # A holiday replays the latest Sunday; other days a random evening of their kind.
+    src = max(pool, key=lambda d: d["day"]) if day in hols else rng.choice(pool)
     shift = rng.uniform(-pc.jitter_minutes, pc.jitter_minutes) * 60
     bedtime = _clock(pc.bedtime)
     margin = pc.daylight_margin_minutes * 60
@@ -201,12 +227,17 @@ class PresenceSimulator:
         self.ours: dict[str, bool] = {}       # light -> the state we last set
         self.manual: set[str] = set()         # lights someone took over; left alone today
         self.current: tuple[str | None, list[Action]] = (None, [])
+        self.country: str | None = self.pc.holidays_country
 
     async def _where(self) -> tuple[float, float, ZoneInfo]:
         if self.where is None:
             c = (await self.http.get("/api/config")).json()
             self.where = (c["latitude"], c["longitude"], ZoneInfo(c["time_zone"]))
+            self.country = self.country or c.get("country")
         return self.where
+
+    def holidays(self, around: date) -> set[date]:
+        return holiday_set(self.country, self.pc.extra_holidays, range(around.year - 1, around.year + 2))
 
     async def sun(self, day: date) -> tuple[float, float]:
         lat, lon, tz = await self._where()
@@ -255,9 +286,11 @@ class PresenceSimulator:
         lat, lon, tz = await self._where()
         day = day or datetime.now(tz).date()
         sun = sun_times(day, lat, lon, tz)
-        src, actions = plan(day, self.library.days(), self.pc, sun, tz, random.Random(day.toordinal()))
+        hols = self.holidays(day)
+        src, actions = plan(day, self.library.days(), self.pc, sun, tz, random.Random(day.toordinal()), hols)
         fmt = lambda ts: datetime.fromtimestamp(ts, tz).strftime("%H:%M")
-        return {"day": day.isoformat(), "from": src, "sunrise": fmt(at(day, sun[0], tz)), "sunset": fmt(at(day, sun[1], tz)),
+        return {"day": day.isoformat(), "kind": kind(day, hols), "from": src,
+                "sunrise": fmt(at(day, sun[0], tz)), "sunset": fmt(at(day, sun[1], tz)),
                 "learned_days": len(self.library.days()),
                 "actions": [{"at": fmt(a.ts), "light": a.light, "on": a.on} for a in actions]}
 
@@ -310,7 +343,8 @@ class PresenceSimulator:
         lat, lon, tz = await self._where()
         today = datetime.now(tz).date()
         sun = sun_times(today, lat, lon, tz)
-        src, actions = plan(today, self.library.days(), self.pc, sun, tz, random.Random(today.toordinal()))
+        src, actions = plan(today, self.library.days(), self.pc, sun, tz, random.Random(today.toordinal()),
+                            self.holidays(today))
         if src is None:
             log.info("presence: nothing learned yet, so nothing to replay")
             while self.active and datetime.now(tz).date() == today:

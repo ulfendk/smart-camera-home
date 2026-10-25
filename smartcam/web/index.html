@@ -269,13 +269,14 @@ const SECTIONS = [
     ["alarm.siren_off_seconds", "Siren pause (s)", "number", 20],
     ["alarm.siren_rounds", "Siren rounds", "number", 3],
   ]},
-  {title: "Presence simulation", desc: "While the alarm is armed, the lights replay a real evening from when you were home (same weekday or weekend), shifted to today's sunset. Learned from Home Assistant's light history, kept growing in SmartCam.", presence: true, fields: [
+  {title: "Presence simulation", desc: "While the alarm is armed, the lights replay a real evening from when you were home (Monday-Thursday, Friday, Saturday or Sunday; public holidays replay the latest Sunday), warped to today's sunrise and sunset. Learned from Home Assistant's light history, kept growing in SmartCam.", presence: true, fields: [
     ["presence.enabled", "Switch lights while armed", "bool", false, "off: only learns and previews (switch off another presence simulation first)"],
     ["presence.lights", "Lights", "list", [], "light entities to replay, comma-separated"],
     ["presence.jitter_minutes", "Shift the evening by up to (min)", "number", 20],
     ["presence.light_jitter_minutes", "Shift each switch by up to (min)", "number", 3],
     ["presence.bedtime", "Bedtime (stays at clock time)", "text", "23:00"],
     ["presence.max_on_hours", "Longest a light stays on (h)", "number", 4],
+    ["presence.extra_holidays", "Extra holidays (MM-DD)", "list", [], "treated like public holidays (latest Sunday), e.g. 12-24, 12-31"],
   ]},
   {title: "Watchdog", desc: "Restart a camera whose stream died: power-cycle its smart plug through Home Assistant, or reboot a Dahua through its API.", fields: [
     ["watchdog.enabled", "Enabled", "bool", true],
@@ -411,7 +412,7 @@ function renderSettings() {
         const r = await fetch("api/presence"), b = await r.json().catch(() => ({}));
         out.hidden = false;
         out.textContent = !r.ok ? "Not available: " + (b.detail || r.status) + " (save, enable and restart first)"
-          : `${b.learned_days} evenings learned. Today (sunrise ${b.sunrise}, sunset ${b.sunset}) replays ${b.from || "nothing yet"}:\n`
+          : `${b.learned_days} evenings learned. Today (${b.kind}; sunrise ${b.sunrise}, sunset ${b.sunset}) replays ${b.from || "nothing yet"}:\n`
             + b.actions.map(a => `${a.at}  ${a.on ? "on " : "off"}  ${a.light}`).join("\n");
       };
       card.appendChild(row); card.appendChild(out);

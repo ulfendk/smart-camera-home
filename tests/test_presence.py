@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from datetime import datetime
 
-from smartcam.presence import PresenceConfig, at, clock_of, intervals, plan, sun_times, warp
+from smartcam.presence import PresenceConfig, at, clock_of, holiday_set, intervals, kind, plan, sun_times, warp
 
 CPH = ZoneInfo("Europe/Copenhagen")
 PC = PresenceConfig()
@@ -38,11 +38,11 @@ def test_motion_flicker_is_merged_and_blips_dropped():
 
 
 def test_plan_replays_a_same_kind_evening_and_skips_daylight():
-    lib = [{"day": "2026-10-14", "weekend": False, "sun": (7.5 * 3600, 17.2 * 3600),
+    lib = [{"day": "2026-10-13", "weekend": False, "sun": (7.5 * 3600, 17.2 * 3600),
             "lights": {"light.kitchen": [(10 * 3600, 11 * 3600), (17.5 * 3600, 21 * 3600)]}},
            {"day": "2026-10-18", "weekend": True, "sun": (7.6 * 3600, 17.0 * 3600), "lights": {"light.kitchen": [(19 * 3600, 20 * 3600)]}}]
     src, actions = plan(date(2026, 10, 27), lib, PC, (8 * 3600, 16.6 * 3600), CPH, random.Random(1))   # a Tuesday
-    assert src == "2026-10-14"
+    assert src == "2026-10-13"                                  # a Tuesday for a Tuesday
     assert len(actions) == 2 and actions[0].on and not actions[1].on   # the 10-11 daytime interval is skipped
     assert plan(date(2026, 10, 27), [], PC, (8 * 3600, 16.6 * 3600), CPH, random.Random(1)) == (None, [])
 
@@ -53,3 +53,16 @@ def test_clock_times_survive_the_day_the_clocks_go_back():
     assert datetime.fromtimestamp(ts, CPH).strftime("%H:%M") == "07:00"
     assert clock_of(ts, day, CPH) == 7 * 3600
     assert clock_of(at(day + __import__("datetime").timedelta(days=1), 0, CPH), day, CPH) == 86400
+
+
+def test_day_kinds_and_holidays_replay_the_latest_sunday():
+    hols = holiday_set("DK", ["12-24"], range(2026, 2027))
+    assert kind(date(2026, 12, 25), hols) == "sunday"          # Juledag, a Friday
+    assert kind(date(2026, 12, 24), hols) == "sunday"          # extra holiday
+    assert kind(date(2026, 10, 30), hols) == "friday" and kind(date(2026, 10, 31), hols) == "saturday"
+    lib = [{"day": d, "weekend": True, "sun": (8 * 3600, 16 * 3600), "lights": {"light.x": [(18 * 3600, 20 * 3600)]}}
+           for d in ("2026-12-06", "2026-12-20", "2026-12-13", "2026-12-19")]   # three Sundays, a Saturday
+    src, _ = plan(date(2026, 12, 25), lib, PC, (8.5 * 3600, 15.7 * 3600), CPH, random.Random(3), hols)
+    assert src == "2026-12-20"                                  # the latest Sunday
+    src, _ = plan(date(2026, 12, 26), lib, PC, (8.5 * 3600, 15.7 * 3600), CPH, random.Random(3), set())
+    assert src == "2026-12-19"                                  # a Saturday replays the Saturday
