@@ -2,6 +2,7 @@
 
 import os
 import re
+import secrets
 from pathlib import Path
 from typing import Literal
 
@@ -74,6 +75,7 @@ class HaConfig(BaseModel):
     token: str = ""
     notify: list[str] = []          # notify services, e.g. mobile_app_my_phone
     event_url: str | None = None    # link opened from a notification; {id} is replaced by the event id
+    smartcam_host: str | None = None   # this machine's address as Home Assistant sees it (for HA cameras)
 
 
 class PathsConfig(BaseModel):
@@ -100,12 +102,16 @@ class DetectConfig(BaseModel):
 
 class Go2rtcConfig(BaseModel):
     binary: Path = Path("bin/go2rtc")
-    api_port: int = 1984
+    api_port: int = 1984            # local only; the web UI proxies the player
     rtsp_port: int = 8554
     webrtc_port: int = 8555
+    rtsp_lan: bool = False          # share the restreams on the LAN (e.g. for Home Assistant cameras)
+    rtsp_user: str = "smartcam"
+    rtsp_password: str | None = None   # generated and kept in the data dir when rtsp_lan is on
 
-    def restream(self, stream: str) -> str:
-        return f"rtsp://127.0.0.1:{self.rtsp_port}/{stream}"
+    def restream(self, stream: str, host: str = "127.0.0.1") -> str:
+        auth = f"{self.rtsp_user}:{self.rtsp_password}@" if self.rtsp_password else ""
+        return f"rtsp://{auth}{host}:{self.rtsp_port}/{stream}"
 
 
 class WebConfig(BaseModel):
@@ -126,6 +132,17 @@ class Config(BaseModel):
     watchdog: dict = {}  # validated by power.WatchdogConfig
     alarm: dict = {}  # validated by alarm.AlarmConfig
     path: Path | None = None  # the file this was loaded from (the settings UI writes it)
+
+
+def _secret(path: Path) -> str:
+    """A generated secret, created once and kept (mode 600) so it survives restarts."""
+    if path.exists():
+        return path.read_text().strip()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    value = secrets.token_urlsafe(18)
+    path.write_text(value)
+    path.chmod(0o600)
+    return value
 
 
 def _merge(base: dict, overlay: dict) -> dict:
@@ -161,4 +178,6 @@ def load_config(path: Path | None = None) -> Config:
         cfg.go2rtc.binary = ROOT / cfg.go2rtc.binary
     if not cfg.detect.model.is_absolute():
         cfg.detect.model = ROOT / cfg.detect.model
+    if cfg.go2rtc.rtsp_lan and not cfg.go2rtc.rtsp_password:
+        cfg.go2rtc.rtsp_password = _secret(cfg.paths.data / "rtsp_password")
     return cfg

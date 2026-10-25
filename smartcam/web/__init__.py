@@ -149,6 +149,17 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
             raise HTTPException(400, "command must be arm_away, disarm or trigger")
         return {"state": alarm.state}
 
+    @app.post("/api/ha/cameras")
+    async def ha_cameras() -> dict:
+        """Create live camera entities in Home Assistant for every camera that has none yet."""
+        if not cfg.ha.enabled:
+            raise HTTPException(400, "the Home Assistant section is off")
+        from ..ha.cameras import HaCameras
+        try:
+            return await HaCameras(cfg).ensure()
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
     @app.get("/api/config")
     def get_config() -> dict:
         """The config file as written (secrets masked), for the settings UI."""

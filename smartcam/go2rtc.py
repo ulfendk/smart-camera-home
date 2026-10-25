@@ -15,9 +15,14 @@ def go2rtc_config(cfg: Config) -> dict:
     for name, cam in cfg.cameras.items():
         streams[name] = [cam.record]
         streams[f"{name}_sub"] = [cam.detect]
+    g = cfg.go2rtc
+    rtsp = {"listen": f"{'' if g.rtsp_lan else '127.0.0.1'}:{g.rtsp_port}"}
+    if g.rtsp_password:
+        rtsp |= {"username": g.rtsp_user, "password": g.rtsp_password}
     return {
-        "api": {"listen": f":{cfg.go2rtc.api_port}"},
-        "rtsp": {"listen": f"127.0.0.1:{cfg.go2rtc.rtsp_port}"},
+        # The API (and its stream list, which holds the camera URLs) stays on this machine.
+        "api": {"listen": f"127.0.0.1:{g.api_port}"},
+        "rtsp": rtsp,
         "webrtc": {"listen": f":{cfg.go2rtc.webrtc_port}"},
         "log": {"level": "warn"},
         "streams": streams,

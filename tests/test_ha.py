@@ -28,3 +28,22 @@ def test_alert_payload_uses_its_own_alert_image_and_stable_tag():
     assert p["data"]["tag"] == "smartcam-7" and p["data"]["url"] == "/smartcam/#event=7"
     assert p["message"] == "away, night"
     assert alert_payload(cfg, event, clip_ready=True)["title"].startswith("Clip:")
+
+
+def test_ha_camera_urls_use_the_password_protected_lan_restream():
+    from smartcam.ha.cameras import camera_urls
+    cfg = load_config(TEST_CONFIG)
+    cfg.go2rtc.rtsp_lan, cfg.go2rtc.rtsp_password, cfg.ha.smartcam_host = True, "s3cret", "192.0.2.5"
+    stream, still = camera_urls(cfg, "front_door")
+    assert stream == "rtsp://smartcam:s3cret@192.0.2.5:8554/front_door"
+    assert still == "http://192.0.2.5:8971/go2rtc/api/frame.jpeg?src=front_door_sub"
+
+
+def test_go2rtc_api_is_local_and_lan_rtsp_has_a_password():
+    from smartcam.go2rtc import go2rtc_config
+    cfg = load_config(TEST_CONFIG)
+    assert go2rtc_config(cfg)["api"]["listen"].startswith("127.0.0.1:")
+    assert go2rtc_config(cfg)["rtsp"] == {"listen": "127.0.0.1:8554"}
+    cfg.go2rtc.rtsp_lan, cfg.go2rtc.rtsp_password = True, "s3cret"
+    assert go2rtc_config(cfg)["rtsp"] == {"listen": ":8554", "username": "smartcam", "password": "s3cret"}
+    assert cfg.go2rtc.restream("x") == "rtsp://smartcam:s3cret@127.0.0.1:8554/x"
