@@ -1,0 +1,30 @@
+[project]
+name = "smartcam"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  # CoreML build on macOS, CUDA build on Linux.
+  "onnxruntime>=1.20; sys_platform == 'darwin'",
+  # 1.27+ is built for CUDA 13, which dropped Pascal (GTX 10-series); 1.26 is the last CUDA 12 build.
+  "onnxruntime-gpu>=1.20,<1.27; sys_platform == 'linux'",
+  "numpy>=1.26",
+  "opencv-python-headless>=4.10",
+  "pyyaml>=6",
+  "pydantic>=2.7",
+  "httpx>=0.27",
+  "python-dotenv>=1.0",
+  "ai-edge-litert>=2.3.0",
+  "fastapi>=0.162.0",
+  "uvicorn[standard]>=0.54.0",
+  "aiomqtt>=2.5.1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["smartcam"]

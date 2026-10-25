@@ -1,0 +1,83 @@
+# smartcam config. Copy to config/smartcam.yml (or point $SMARTCAM_CONFIG at your copy).
+# ${VAR} and ${VAR:-default} are filled in from the environment / .env, so secrets can stay out of this file.
+# Zone and mask coordinates are normalised (0..1) x,y pairs, as in Frigate.
+
+dahua_main: &dahua_main "rtsp://${CAM_USER}:${CAM_PASS}@{ip}:554/live"
+dahua_sub: &dahua_sub "rtsp://${CAM_USER}:${CAM_PASS}@{ip}:554/cam/realmonitor?channel=1&subtype=2"
+
+cameras:
+  front_door:
+    location: outdoor          # outdoor | indoor: indoor people while away score the maximum
+    vendor: dahua              # enables the camera's white light as a floodlight
+    ip: 192.0.2.10
+    record: *dahua_main        # main stream: recorded
+    detect: *dahua_sub         # sub stream: decoded for detection
+    zones:
+      door: [0.6,0.4, 1,0.4, 1,1, 0.6,1]
+
+  driveway:
+    location: outdoor
+    vendor: dahua
+    ip: 192.0.2.11
+    record: *dahua_main
+    detect: *dahua_sub
+
+  living_room:
+    location: indoor
+    ip: 192.0.2.20
+    record: "rtsp://${CAM_USER}:${CAM_PASS}@{ip}:554/live/ch0"
+    detect: "rtsp://${CAM_USER}:${CAM_PASS}@{ip}:554/live/ch1"
+    person_mask: [0,0.8, 0.3,0.8, 0.3,1, 0,1]   # people whose feet are in here are ignored
+    motion_mask: [0.4,0, 0.6,0, 0.6,0.2, 0.4,0.2]
+
+mqtt:
+  enabled: false
+  host: ${MQTT_HOST}
+  port: 1883
+  user: ${MQTT_USER}
+  password: ${MQTT_PASS}
+  topic_prefix: smartcam
+  discovery_prefix: homeassistant   # use another prefix to keep entities out of HA while testing
+
+ha:
+  enabled: false        # push notifications via the HA REST API
+  url: ${HA_URL}
+  token: ${HA_TOKEN}    # long-lived access token (HA profile -> Security)
+  notify: []            # e.g. [mobile_app_my_phone]
+  event_url: null
+
+lights:
+  enabled: true
+  dry_run: true         # only log what would be switched; set false once tested
+  cameras: []           # empty = every outdoor Dahua uses its own white light
+  on_seconds: 60
+  dark_threshold: 70
+
+paths:
+  data: data            # recordings, clips, db; relative to the install dir
+
+record:
+  segment_seconds: 10
+  retain_days: 7
+
+detect:
+  fps: 5
+  max_width: 1280       # sub-streams above this are scaled down before detection
+  hwaccel: none         # videotoolbox (macOS), vaapi (Intel/AMD on Linux), none
+  model: models/yolo11s.onnx   # yolo11m is more accurate if the GPU keeps up
+
+rules:
+  notify_score: 4
+  loiter_seconds: 30
+  door_zones: [door]
+  night_start: 22
+  night_end: 6
+
+go2rtc:
+  binary: bin/go2rtc
+  api_port: 1984
+  rtsp_port: 8554
+  webrtc_port: 8555
+
+web:
+  port: 8971

@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>smartcam — camera alerts you can trust</title>
+<meta name="description" content="A self-hosted NVR for Home Assistant homes. Person alerts that ignore parked cars, lamps and sunlight, with a snapshot and clip on your phone.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%2303a9f4' d='M18.15 4.94a1.3 1.3 0 0 0-.33-.04c-.3 0-.6.1-.84.3L4.5 13.69a1.4 1.4 0 0 0-.4 1.72l1.7 3.6a1.4 1.4 0 0 0 1.82.69l.45-.2.86 1.81-1.83.86.86 1.82 5.48-2.58-.86-1.82-1.82.85-.86-1.81 7.3-3.42a1.4 1.4 0 0 0 .64-1.85L18.6 5.68a1.4 1.4 0 0 0-.45-.74M21.5 7.5 20 8.2l1.7 3.6 1.5-.7z'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
+<style>
+  :root {
+    --primary: #03a9f4;
+    --primary-dark: #0288d1;
+    --accent: #ff9800;
+    --bg: #fafafa;
+    --card: #ffffff;
+    --text: #212121;
+    --muted: #727272;
+    --divider: rgba(0, 0, 0, .12);
+    --toolbar: #ffffff;
+    --on: #ffc107;
+    --ok: #43a047;
+    --bad: #db4437;
+    --shadow: 0 2px 2px 0 rgba(0,0,0,.14), 0 1px 5px 0 rgba(0,0,0,.12), 0 3px 1px -2px rgba(0,0,0,.2);
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111111;
+      --card: #1c1c1c;
+      --text: #e1e1e1;
+      --muted: #9b9b9b;
+      --divider: rgba(225, 225, 225, .12);
+      --toolbar: #1c1c1c;
+      --shadow: 0 0 0 1px rgba(225,225,225,.06);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre { font-family: "Roboto Mono", ui-monospace, monospace; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  .mdi { line-height: 1; }
+
+  /* toolbar */
+  header.toolbar { position: sticky; top: 0; z-index: 10; background: var(--toolbar); border-bottom: 1px solid var(--divider); }
+  header .wrap { display: flex; align-items: center; height: 56px; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 500; color: var(--text); }
+  .brand .mdi { color: var(--primary); font-size: 26px; }
+  header nav { margin-left: auto; display: flex; gap: 4px; }
+  header nav a { color: var(--muted); padding: 8px 12px; border-radius: 8px; font-weight: 500; font-size: 14px; }
+  header nav a:hover { background: var(--divider); color: var(--text); text-decoration: none; }
+  @media (max-width: 640px) { header nav a.hide-sm { display: none; } }
+
+  /* buttons */
+  .btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 20px; border-radius: 20px; font-weight: 500; font-size: 14px; letter-spacing: .02em; }
+  .btn:hover { text-decoration: none; filter: brightness(1.08); }
+  .btn.filled { background: var(--primary); color: #fff; }
+  .btn.outlined { border: 1px solid var(--divider); color: var(--primary); }
+
+  /* hero */
+  .hero { padding: 64px 0 48px; }
+  .hero .wrap { display: grid; grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: center; }
+  @media (max-width: 900px) { .hero .wrap { grid-template-columns: 1fr; } }
+  .eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); padding: 4px 12px; border-radius: 16px; }
+  h1 { font-size: clamp(36px, 6vw, 56px); line-height: 1.08; margin: 16px 0; font-weight: 700; letter-spacing: -.02em; }
+  h1 em { font-style: normal; color: var(--primary); }
+  .lead { font-size: 19px; color: var(--muted); max-width: 34em; margin: 0 0 28px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* HA-style dashboard mock */
+  .dash { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .tile { display: flex; align-items: center; gap: 12px; padding: 12px; }
+  .tile .ico { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-size: 20px; background: var(--divider); color: var(--muted); flex: none; }
+  .tile.on .ico { background: color-mix(in srgb, var(--on) 22%, transparent); color: var(--on); }
+  .tile.blue .ico { background: color-mix(in srgb, var(--primary) 18%, transparent); color: var(--primary); }
+  .tile .name { font-size: 14px; font-weight: 500; }
+  .tile .state { font-size: 12px; color: var(--muted); }
+  .tile .switch { margin-left: auto; width: 34px; height: 14px; border-radius: 7px; background: color-mix(in srgb, var(--primary) 50%, transparent); position: relative; flex: none; }
+  .tile .switch::after { content: ""; position: absolute; right: -2px; top: -3px; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); box-shadow: var(--shadow); }
+  .span2 { grid-column: span 2; }
+  .notif { padding: 12px 14px; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+  .notif .app { width: 36px; height: 36px; border-radius: 9px; background: var(--primary); color: #fff; display: grid; place-items: center; font-size: 20px; grid-row: span 2; }
+  .notif .t { font-weight: 500; font-size: 14px; display: flex; justify-content: space-between; }
+  .notif .t small { color: var(--muted); font-weight: 400; }
+  .notif .m { font-size: 13px; color: var(--muted); }
+  .notif .shot { grid-column: 2; margin-top: 8px; border-radius: 8px; aspect-ratio: 16/8; position: relative; overflow: hidden;
+    background: linear-gradient(180deg, #1d2633 0%, #2c3a4d 55%, #3b3b33 56%, #4a463c 100%); }
+  .shot .house { position: absolute; left: 8%; bottom: 44%; width: 34%; height: 40%; background: #18202b; clip-path: polygon(0 35%, 50% 0, 100% 35%, 100% 100%, 0 100%); }
+  .shot .car { position: absolute; right: 8%; bottom: 18%; width: 30%; height: 20%; background: #5b6470; border-radius: 30% 30% 8px 8px; }
+  .shot .box { position: absolute; border: 2px solid #ff3b30; border-radius: 2px; }
+  .shot .person { position: absolute; left: 52%; bottom: 14%; width: 7%; height: 46%; background: #0d0f12; border-radius: 40% 40% 6px 6px; }
+  .shot .light { position: absolute; left: 30%; top: -30%; width: 70%; height: 140%; background: radial-gradient(ellipse at 40% 30%, rgba(255,240,200,.35), transparent 60%); }
+  .shot .tag { position: absolute; left: 50%; bottom: 62%; font: 10px/1 Roboto, sans-serif; background: #ff3b30; color: #fff; padding: 2px 4px; border-radius: 2px; }
+
+  /* sections */
+  section { padding: 56px 0; }
+  h2 { font-size: 32px; line-height: 1.2; margin: 0 0 8px; font-weight: 700; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 32px; max-width: 46em; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 800px) { .stats { grid-template-columns: 1fr 1fr; } }
+  .stat { padding: 20px; }
+  .stat .v { font-size: 34px; font-weight: 700; line-height: 1.1; }
+  .stat .v.good { color: var(--ok); }
+  .stat .l { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 12px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+  .feature { padding: 20px; }
+  .feature .ico { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; margin-bottom: 12px;
+    background: color-mix(in srgb, var(--c, var(--primary)) 16%, transparent); color: var(--c, var(--primary)); }
+  .feature h3 { margin: 0 0 6px; font-size: 18px; font-weight: 500; }
+  .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  .pipeline { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+  .step { flex: 1 1 150px; padding: 16px; position: relative; }
+  .step .n { font-size: 12px; font-weight: 700; color: var(--primary); letter-spacing: .08em; }
+  .step h4 { margin: 4px 0; font-size: 16px; font-weight: 500; }
+  .step p { margin: 0; font-size: 14px; color: var(--muted); }
+
+  .install { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; align-items: start; }
+  @media (max-width: 900px) { .install { grid-template-columns: 1fr; } }
+  .install ol { margin: 0; padding-left: 20px; }
+  .install li { margin-bottom: 10px; }
+  pre { margin: 0; padding: 16px 20px; overflow-x: auto; font-size: 13px; line-height: 1.6; background: #1c1c1c; color: #e1e1e1; border-radius: var(--radius); }
+  pre .c { color: #8a8a8a; }
+  pre .k { color: #4fc3f7; }
+  .req { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid var(--divider); font-size: 13px; color: var(--muted); }
+  .chip .mdi { color: var(--primary); font-size: 18px; }
+
+  .credit { display: grid; grid-template-columns: auto 1fr; gap: 20px; padding: 24px; align-items: center; }
+  .credit .ico { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .credit p { margin: 0; color: var(--muted); }
+  .credit h3 { margin: 0 0 4px; font-size: 18px; font-weight: 500; }
+  .thanks { margin-top: 16px; color: var(--muted); font-size: 14px; }
+
+  footer { border-top: 1px solid var(--divider); padding: 24px 0 40px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<header class="toolbar">
+  <div class="wrap">
+    <a class="brand" href="#"><span class="mdi mdi-cctv"></span>smartcam</a>
+    <nav>
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/ulfendk/smart-camera-home"><span class="mdi mdi-github"></span> GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow"><span class="mdi mdi-home-assistant"></span> Built for Home Assistant</span>
+      <h1>Camera alerts you can <em>trust</em>.</h1>
+      <p class="lead">smartcam is a self-hosted NVR that tells you when a <strong>person</strong> is moving around your home, and ignores the parked car, the lamp and the afternoon sun. When you're away, it sends the snapshot and clip straight to your phone.</p>
+      <div class="cta">
+        <a class="btn filled" href="#install"><span class="mdi mdi-download"></span>Get started</a>
+        <a class="btn outlined" href="https://github.com/ulfendk/smart-camera-home"><span class="mdi mdi-github"></span>View on GitHub</a>
+      </div>
+    </div>
+
+    <div class="dash" aria-label="Example Home Assistant dashboard with smartcam entities">
+      <div class="card tile blue span2"><div class="ico"><span class="mdi mdi-home-export-outline"></span></div>
+        <div><div class="name">Smartcam Away</div><div class="state">On · alerts for every person outside</div></div><div class="switch"></div></div>
+      <div class="card tile on"><div class="ico"><span class="mdi mdi-walk"></span></div>
+        <div><div class="name">Front door person</div><div class="state">Detected</div></div></div>
+      <div class="card tile"><div class="ico"><span class="mdi mdi-sofa-outline"></span></div>
+        <div><div class="name">Living room person</div><div class="state">Clear</div></div></div>
+      <div class="card tile on"><div class="ico"><span class="mdi mdi-light-flood-down"></span></div>
+        <div><div class="name">Driveway white light</div><div class="state">On · 60 s</div></div></div>
+      <div class="card tile"><div class="ico"><span class="mdi mdi-car-outline"></span></div>
+        <div><div class="name">Parked car</div><div class="state">Stationary · ignored</div></div></div>
+      <div class="card notif span2">
+        <div class="app"><span class="mdi mdi-cctv"></span></div>
+        <div class="t">Person at driveway <small>now</small></div>
+        <div class="m">away, night, loitering in door zone</div>
+        <div class="shot" role="img" aria-label="Night snapshot with a person boxed in red next to a parked car">
+          <div class="light"></div><div class="house"></div><div class="car"></div><div class="person"></div>
+          <div class="box" style="left:50.5%;bottom:12%;width:10%;height:50%"></div><div class="tag">person 0.91</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section id="results">
+  <div class="wrap">
+    <h2>Fewer false alarms, no missed people</h2>
+    <p class="sub">Replayed against a real home's labelled Frigate history: 305 cases from seven cameras, by day, at night, indoors and out.</p>
+    <div class="stats">
+      <div class="card stat"><div class="v good">252/252</div><div class="l">real people alerted on by smartcam</div></div>
+      <div class="card stat"><div class="v good">0</div><div class="l">false person alarms from smartcam</div></div>
+      <div class="card stat"><div class="v">237/252</div><div class="l">people alerted on by Frigate</div></div>
+      <div class="card stat"><div class="v">6</div><div class="l">false alarms from Frigate (a tree trunk, a parked car)</div></div>
+    </div>
+    <p class="note">One home's footage, not a benchmark, and the cases were mostly sampled from Frigate's own events. The regression tools are in the repository, so you can run it on yours.</p>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>What it does</h2>
+    <p class="sub">Everything a camera system needs to be useful, and nothing that wakes you up for a lamp.</p>
+    <div class="grid">
+      <div class="card feature"><div class="ico"><span class="mdi mdi-run-fast"></span></div>
+        <h3>The moving person wins</h3><p>Every track carries its own evidence of how far it travelled. A person walking past a parked car is the alert; the car, which never moved, never is.</p></div>
+      <div class="card feature" style="--c:#ffb300"><div class="ico"><span class="mdi mdi-lightbulb-on-outline"></span></div>
+        <h3>Lamp- and sun-proof</h3><p>Motion is measured against each pixel's neighbourhood, so a lamp switching on or sunlight sweeping a wall isn't motion. A sudden whole-frame change is treated as lighting.</p></div>
+      <div class="card feature" style="--c:#8e24aa"><div class="ico"><span class="mdi mdi-brain"></span></div>
+        <h3>It learns your house</h3><p>Spots where a "person" sits without ever moving, like a coat on a hook or a stack of tyres, are remembered and need much stronger evidence next time.</p></div>
+      <div class="card feature" style="--c:#e53935"><div class="ico"><span class="mdi mdi-shield-alert-outline"></span></div>
+        <h3>Suspicion, not just detection</h3><p>Events are scored: away mode, night, loitering, door zones, a person seen on one camera and then the next. Only what matters reaches your phone.</p></div>
+      <div class="card feature"><div class="ico"><span class="mdi mdi-cellphone-message"></span></div>
+        <h3>Push with picture and clip</h3><p>Notifications through the Home Assistant companion app, each with its own snapshot, followed by the clip with five seconds of lead-in. They work away from home too.</p></div>
+      <div class="card feature" style="--c:#43a047"><div class="ico"><span class="mdi mdi-home-assistant"></span></div>
+        <h3>At home in Home Assistant</h3><p>An away switch, a person sensor and a snapshot camera per camera appear automatically over MQTT, ready for your automations and dashboards.</p></div>
+      <div class="card feature" style="--c:#ff9800"><div class="ico"><span class="mdi mdi-light-flood-down"></span></div>
+        <h3>Floodlight on a person</h3><p>At night it switches on a Dahua camera's own white light while a person is in view, so the recording is in colour and the visitor knows it.</p></div>
+      <div class="card feature" style="--c:#546e7a"><div class="ico"><span class="mdi mdi-chip"></span></div>
+        <h3>Runs on what you have</h3><p>YOLO11 on an NVIDIA GPU (GTX 10-series and newer) or Apple Silicon, hardware video decoding on Intel graphics, and Coral USB support on the way.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="sub">One container. go2rtc is the only thing that talks to your cameras; everything else reads its restreams.</p>
+    <div class="pipeline">
+      <div class="card step"><div class="n">01</div><h4>Record</h4><p>Main streams are copied to 10-second segments, continuously, with no re-encoding.</p></div>
+      <div class="card step"><div class="n">02</div><h4>Watch</h4><p>Sub streams are decoded at 5 fps and checked for real, lighting-robust motion.</p></div>
+      <div class="card step"><div class="n">03</div><h4>Detect</h4><p>YOLO11 finds people and vehicles in the full frame, more often while something moves.</p></div>
+      <div class="card step"><div class="n">04</div><h4>Track</h4><p>Tracks gather evidence: travel, in-box motion, how long they've stood still.</p></div>
+      <div class="card step"><div class="n">05</div><h4>Decide</h4><p>Confirmed people become events, scored for suspicion against zones, time and away mode.</p></div>
+      <div class="card step"><div class="n">06</div><h4>Tell you</h4><p>Home Assistant entities update, and above the threshold your phone gets the snapshot and clip.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install</h2>
+    <p class="sub">A Docker image is published for every commit. Your config stays on your server.</p>
+    <div class="install">
+      <div>
+        <ol>
+          <li>Create a data folder and put your config in it as <code>smartcam.yml</code>, starting from the <a href="https://github.com/ulfendk/smart-camera-home/blob/main/config/smartcam.example.yml">example config</a>.</li>
+          <li>Start the stack with <code>docker compose up -d</code>, or as a Portainer stack straight from the repository.</li>
+          <li>Open the web UI on port 8971, and switch on MQTT to see the entities in Home Assistant.</li>
+        </ol>
+        <div class="req">
+          <span class="chip"><span class="mdi mdi-docker"></span>Docker</span>
+          <span class="chip"><span class="mdi mdi-expansion-card"></span>NVIDIA GPU, driver ≥ 525</span>
+          <span class="chip"><span class="mdi mdi-cctv"></span>RTSP cameras</span>
+          <span class="chip"><span class="mdi mdi-home-assistant"></span>Home Assistant + MQTT</span>
+        </div>
+      </div>
+<pre><span class="c"># docker-compose.yml</span>
+<span class="k">services:</span>
+  <span class="k">smartcam:</span>
+    <span class="k">image:</span> ghcr.io/ulfendk/smart-camera-home:latest
+    <span class="k">restart:</span> unless-stopped
+    <span class="k">network_mode:</span> host
+    <span class="k">devices:</span>
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    <span class="k">deploy:</span>
+      <span class="k">resources:</span>
+        <span class="k">reservations:</span>
+          <span class="k">devices:</span>
+            - <span class="k">driver:</span> nvidia
+              <span class="k">count:</span> 1
+              <span class="k">capabilities:</span> [gpu]
+    <span class="k">volumes:</span>
+      - /srv/smartcam:/app/data   <span class="c"># smartcam.yml + recordings</span></pre>
+    </div>
+  </div>
+</section>
+
+<section id="credits">
+  <div class="wrap">
+    <div class="card credit">
+      <div class="ico"><span class="mdi mdi-heart-outline"></span></div>
+      <div>
+        <h3>Inspired by Frigate</h3>
+        <p>smartcam exists because <a href="https://frigate.video">Frigate</a> showed what a local, private NVR for Home Assistant can be. It borrows Frigate's best ideas: go2rtc restreaming, continuous recording with events on top, zones and masks in normalised coordinates, and MQTT entities. If you need face recognition, a mature UI or a large community, use Frigate. smartcam is a smaller project with a narrower aim: fewer false alarms.</p>
+      </div>
+    </div>
+    <p class="thanks">Also built on <a href="https://github.com/AlexxIT/go2rtc">go2rtc</a>, <a href="https://docs.ultralytics.com">Ultralytics YOLO11</a>, <a href="https://onnxruntime.ai">ONNX Runtime</a>, <a href="https://ffmpeg.org">FFmpeg</a> and <a href="https://pictogrammers.com/library/mdi/">Material Design Icons</a>.</p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>smartcam · MIT licensed · <a href="https://github.com/ulfendk/smart-camera-home">GitHub</a></span>
+    <span>Not affiliated with Home Assistant, Nabu Casa or Frigate.</span>
+  </div>
+</footer>
+
+</body>
+</html>

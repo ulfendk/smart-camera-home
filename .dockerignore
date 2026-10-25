@@ -1,0 +1,13 @@
+.venv
+.git
+bin
+data
+local
+models
+.env
+.github
+tests
+tools
+scripts
+*.md
+site

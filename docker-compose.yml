@@ -1,0 +1,24 @@
+# smartcam on a Linux host with an NVIDIA GPU and an Intel iGPU, e.g. as a Portainer stack from this repository.
+# Put your config at $DATA_DIR/smartcam.yml (start from config/smartcam.example.yml) before the first start.
+# Host networking keeps RTSP/WebRTC simple (go2rtc 1984/8554/8555, UI 8971).
+services:
+  smartcam:
+    image: ghcr.io/ulfendk/smart-camera-home:${SMARTCAM_TAG:-latest}
+    restart: unless-stopped
+    stop_grace_period: 30s             # time to switch lights back and close the recordings
+    network_mode: host
+    environment:
+      TZ: ${TZ:-UTC}                   # recordings are filed by local time
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128   # Intel iGPU (VAAPI decoding)
+      - /dev/bus/usb:/dev/bus/usb                 # Coral USB (optional)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ${DATA_DIR:-/srv/smartcam}:/app/data   # smartcam.yml, recordings, clips, snapshots, database
+      - /etc/localtime:/etc/localtime:ro

@@ -1,0 +1,82 @@
+"""SQLite store for events and settings (away mode)."""
+
+import json
+import sqlite3
+import threading
+from pathlib import Path
+
+SCHEMA = """
+create table if not exists events (
+    id          integer primary key autoincrement,
+    camera      text not null,
+    label       text not null,
+    start_ts    real not null,
+    end_ts      real,
+    max_score   real not null,
+    zones       text not null default '[]',
+    score       real not null default 0,      -- suspicion score
+    reasons     text not null default '[]',
+    snapshot    text,
+    clip        text,
+    notified    integer not null default 0,
+    review      text                           -- null, 'ok' or 'false_positive'
+);
+create index if not exists events_start on events (start_ts desc);
+create table if not exists settings (key text primary key, value text not null);
+"""
+
+JSON_FIELDS = ("zones", "reasons")
+
+
+class Database:
+    def __init__(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.conn = sqlite3.connect(path, check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row
+        self.conn.executescript(SCHEMA)
+        self.lock = threading.Lock()
+
+    def _row(self, row: sqlite3.Row | None) -> dict | None:
+        if row is None:
+            return None
+        d = dict(row)
+        for f in JSON_FIELDS:
+            d[f] = json.loads(d[f])
+        return d
+
+    def insert_event(self, **fields) -> int:
+        fields = {k: json.dumps(v) if k in JSON_FIELDS else v for k, v in fields.items()}
+        with self.lock, self.conn:
+            cur = self.conn.execute(
+                f"insert into events ({', '.join(fields)}) values ({', '.join('?' * len(fields))})",
+                list(fields.values()))
+            return cur.lastrowid
+
+    def update_event(self, event_id: int, **fields) -> None:
+        fields = {k: json.dumps(v) if k in JSON_FIELDS else v for k, v in fields.items()}
+        with self.lock, self.conn:
+            self.conn.execute(f"update events set {', '.join(f'{k} = ?' for k in fields)} where id = ?",
+                              [*fields.values(), event_id])
+
+    def event(self, event_id: int) -> dict | None:
+        with self.lock:
+            return self._row(self.conn.execute("select * from events where id = ?", (event_id,)).fetchone())
+
+    def events(self, limit: int = 100, camera: str | None = None, min_score: float = 0) -> list[dict]:
+        sql, args = "select * from events where score >= ?", [min_score]
+        if camera:
+            sql += " and camera = ?"
+            args.append(camera)
+        with self.lock:
+            rows = self.conn.execute(sql + " order by start_ts desc limit ?", [*args, limit]).fetchall()
+        return [self._row(r) for r in rows]
+
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        with self.lock:
+            row = self.conn.execute("select value from settings where key = ?", (key,)).fetchone()
+        return row[0] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self.lock, self.conn:
+            self.conn.execute("insert into settings (key, value) values (?, ?) "
+                              "on conflict(key) do update set value = excluded.value", (key, value))

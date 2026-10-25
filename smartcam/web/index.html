@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smartcam</title>
+<style>
+  :root { --bg: #f4f4f2; --fg: #1d1d1b; --muted: #6b6b66; --card: #fff; --line: #ddd; --accent: #b4441f; --ok: #2f7d4a; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #151514; --fg: #ecece8; --muted: #9a9a94; --card: #1f1f1d; --line: #33332f; --accent: #e0703f; --ok: #5cb87c; } }
+  body { margin: 0; font: 15px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  h1 { font-size: 18px; margin: 0 8px 0 0; }
+  nav button, .away { font: inherit; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--fg); cursor: pointer; }
+  nav button[aria-pressed="true"] { border-color: var(--fg); font-weight: 600; }
+  .away { margin-left: auto; }
+  .away[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  main { padding: 0 16px 16px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
+  figure { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  figcaption { padding: 6px 10px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  small, .muted { color: var(--muted); }
+  iframe, figure img, figure video { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #000; object-fit: contain; }
+  .score { font-weight: 600; }
+  .score.high { color: var(--accent); }
+  .actions button { font: inherit; font-size: 13px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--fg); cursor: pointer; }
+  .actions button[aria-pressed="true"] { border-color: var(--fg); font-weight: 600; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Smartcam</h1>
+  <nav><button id="tab-live" aria-pressed="true">Live</button> <button id="tab-events" aria-pressed="false">Events</button></nav>
+  <button class="away" id="away" aria-pressed="false">Home</button>
+</header>
+<main>
+  <section id="live" class="grid"></section>
+  <section id="events" class="grid" hidden></section>
+  <p id="status" class="muted"></p>
+</main>
+<script>
+const GO2RTC = "{{GO2RTC}}";
+const $ = id => document.getElementById(id);
+const fmt = ts => new Date(ts * 1000).toLocaleString();
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+function showTab(name) {
+  for (const t of ["live", "events"]) {
+    $(t).hidden = t !== name;
+    $("tab-" + t).setAttribute("aria-pressed", t === name);
+  }
+  if (name === "events") loadEvents();
+}
+$("tab-live").onclick = () => showTab("live");
+$("tab-events").onclick = () => showTab("events");
+
+async function loadAway() {
+  const {away} = await (await fetch("/api/away")).json();
+  $("away").setAttribute("aria-pressed", away);
+  $("away").textContent = away ? "Away" : "Home";
+}
+$("away").onclick = async () => {
+  const away = $("away").getAttribute("aria-pressed") !== "true";
+  await fetch("/api/away", {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({away})});
+  loadAway();
+};
+
+async function loadLive() {
+  const cams = await (await fetch("/api/cameras")).json();
+  for (const c of cams) {
+    const fig = document.createElement("figure");
+    // Sub-streams are light enough to show all cameras at once; the name links to the main stream.
+    fig.innerHTML = `<iframe loading="lazy" allow="autoplay" src="${GO2RTC}/stream.html?src=${c.name}_sub&mode=webrtc,mse"></iframe>
+      <figcaption><a href="${GO2RTC}/stream.html?src=${c.name}" target="_blank">${esc(c.name)}</a><small>${c.location}</small></figcaption>`;
+    $("live").appendChild(fig);
+  }
+}
+
+async function review(id, value, fig) {
+  await fetch(`/api/events/${id}/review`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({review: value})});
+  for (const b of fig.querySelectorAll(".actions button")) b.setAttribute("aria-pressed", b.dataset.value === value);
+}
+
+async function loadEvents() {
+  const events = await (await fetch("/api/events?limit=100")).json();
+  $("events").replaceChildren();
+  $("status").textContent = events.length ? "" : "No events yet.";
+  for (const e of events) {
+    const fig = document.createElement("figure");
+    const media = e.clip ? `<video controls preload="none" poster="/media/${e.snapshot}" src="/media/${e.clip}"></video>`
+                         : `<img loading="lazy" src="/media/${e.snapshot}" alt="snapshot">`;
+    const dur = e.end_ts ? `${Math.round(e.end_ts - e.start_ts)}s` : "ongoing";
+    fig.innerHTML = `${media}
+      <figcaption>
+        <span><b>${esc(e.camera)}</b> ${esc(e.label)} <small>${fmt(e.start_ts)} · ${dur}</small></span>
+        <span class="score ${e.score >= 4 ? "high" : ""}" title="${esc(e.reasons.join(", "))}">score ${e.score}${e.notified ? " · notified" : ""}</span>
+      </figcaption>
+      <figcaption><small>${esc(e.reasons.join(" · "))}</small>
+        <span class="actions"><button data-value="ok">Correct</button> <button data-value="false_positive">False alarm</button></span>
+      </figcaption>`;
+    for (const b of fig.querySelectorAll(".actions button")) {
+      b.setAttribute("aria-pressed", b.dataset.value === e.review);
+      b.onclick = () => review(e.id, b.getAttribute("aria-pressed") === "true" ? null : b.dataset.value, fig);
+    }
+    $("events").appendChild(fig);
+  }
+}
+
+loadAway();
+loadLive().catch(e => { $("status").textContent = "failed to load cameras: " + e; });
+</script>
+</body>
+</html>

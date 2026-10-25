@@ -1,0 +1,10 @@
+.env
+bin/
+data/
+models/
+local/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+config/smartcam.yml
