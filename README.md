@@ -136,6 +136,9 @@ site/              the project website (GitHub Pages)
   flash for 10-15 minutes and the siren sounds in bursts (e.g. 10 s on, a pause, a few rounds),
   then everything stays off until disarmed and triggered again
 - Live camera streams in Home Assistant dashboards (go2rtc on the LAN)
+- Speed events for passing vehicles: estimated speed from a per-camera calibration (two road
+  marks a known distance apart), with the best full-resolution shot of the vehicle, its licence
+  plate and, where visible, the driver
 - Rebrand as an alarm system for Home Assistant (working title "SmartCam Alarm")
 - Coral USB as a fast first pass in front of the GPU
 
