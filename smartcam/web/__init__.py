@@ -47,7 +47,8 @@ class CollapseSlashes:
         await self.app(scope, receive, send)
 
 
-def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.Event | None = None) -> FastAPI:
+def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.Event | None = None,
+               alarm=None) -> FastAPI:
     app = FastAPI(title="smartcam")
     app.add_middleware(CollapseSlashes)
     for sub in ("recordings", "snapshots", "clips"):
@@ -130,6 +131,23 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
     async def put_away(body: Away) -> Away:
         await engine.set_away(body.away)
         return Away(away=engine.away)
+
+    @app.get("/api/alarm")
+    def get_alarm() -> dict:
+        return {"state": alarm.state if alarm else "unavailable"}
+
+    @app.post("/api/alarm/{command}")
+    async def post_alarm(command: str) -> dict:
+        """arm_away, disarm, or trigger (a test of the deterrence)."""
+        if alarm is None:
+            raise HTTPException(404, "alarm mode is off")
+        if command == "trigger":
+            await alarm.trigger("triggered from the web UI")
+        elif command in ("arm_away", "disarm"):
+            await alarm.command(command)
+        else:
+            raise HTTPException(400, "command must be arm_away, disarm or trigger")
+        return {"state": alarm.state}
 
     @app.get("/api/config")
     def get_config() -> dict:

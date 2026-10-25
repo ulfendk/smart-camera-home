@@ -113,6 +113,7 @@ class EventEngine:
         self.on_alert: list[Notifier] = []
         self.on_clip: list[Notifier] = []
         self.on_away: list[Callable[[bool], Awaitable[None]]] = []
+        self.on_score: list[Callable[[OpenEvent], Awaitable[None]]] = []   # when an event's score rises
         self.snapshots = cfg.paths.data / "snapshots"
         self.clips = cfg.paths.data / "clips"
 
@@ -197,7 +198,14 @@ class EventEngine:
         cutoff = ev.start - self.rules.sequence_window
         self.recent_starts = [(ts, c) for ts, c in self.recent_starts if ts >= now - 3600]
         others = sorted({c for ts, c in self.recent_starts if c != ev.camera and cutoff <= ts <= ev.start})
+        before = ev.score
         ev.score, ev.reasons = score_event(ev, now, self.away, self.rules, others)
+        if ev.score > before:
+            for cb in self.on_score:
+                try:
+                    await cb(ev)
+                except Exception:
+                    log.exception("score callback failed for event %d", ev.id)
         self.db.update_event(ev.id, score=ev.score, reasons=ev.reasons, zones=sorted(ev.zone_dwell),
                              max_score=ev.best_score)
         if not ev.notified and should_notify(ev, self.away, now, self.rules):

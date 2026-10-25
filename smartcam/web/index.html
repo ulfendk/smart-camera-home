@@ -25,6 +25,10 @@
   nav button { font: inherit; font-weight: 500; padding: 8px 14px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
   nav button[aria-pressed="true"] { color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
   .away { margin-left: auto; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: var(--muted); font-weight: 500; }
+  .alarm { font: inherit; font-weight: 500; padding: 6px 14px; border-radius: 16px; border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; }
+  .alarm[data-state="armed_away"] { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .alarm[data-state="triggered"] { color: #fff; background: var(--error); border-color: var(--error); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .6; } }
   main { padding: 16px; max-width: 1400px; margin: 0 auto; }
   .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
   figure, .card { margin: 0; background: var(--card); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
@@ -94,6 +98,7 @@
     <button id="tab-settings" aria-pressed="false">Settings</button>
   </nav>
   <div class="away" id="away" role="switch" aria-checked="false" tabindex="0"><span id="away-label">Home</span><span class="switch"></span></div>
+  <button class="alarm" id="alarm" hidden title="Arm or disarm the alarm">Alarm off</button>
 </header>
 <main>
   <section id="live" class="grid"></section>
@@ -132,6 +137,21 @@ async function toggleAway() {
 }
 $("away").onclick = toggleAway;
 $("away").onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleAway(); } };
+
+// --- alarm -----------------------------------------------------------------------------------------
+const ALARM_LABEL = {disarmed: "Alarm off", armed_away: "Alarm armed", triggered: "ALARM"};
+async function loadAlarm() {
+  const {state} = await (await fetch("api/alarm")).json();
+  $("alarm").hidden = state === "unavailable";
+  $("alarm").dataset.state = state;
+  $("alarm").textContent = ALARM_LABEL[state] || state;
+}
+$("alarm").onclick = async () => {
+  const cmd = $("alarm").dataset.state === "disarmed" ? "arm_away" : "disarm";
+  await fetch("api/alarm/" + cmd, {method: "POST"});
+  await loadAlarm(); loadAway();
+};
+setInterval(() => { loadAlarm(); loadAway(); }, 10000);
 
 // --- live ----------------------------------------------------------------------------------------
 async function loadLive() {
@@ -226,6 +246,16 @@ const SECTIONS = [
     ["lights.max_on_seconds", "At most (s)", "number", 600],
     ["lights.cooldown", "Cooldown (s)", "number", 20],
     ["lights.dark_threshold", "Dark below (0-255)", "number", 70, "mean image brightness"],
+  ]},
+  {title: "Alarm", desc: "Arm from Home Assistant (alarm_control_panel.smartcam_alarm) or the button at the top. While armed, an event reaching the trigger score flashes the red/blue warning lights (and sounds the sirens, if enabled), then the alarm stays quiet until it is disarmed and armed again.", test: true, fields: [
+    ["alarm.enabled", "Alarm mode", "bool", true],
+    ["alarm.trigger_score", "Trigger at score", "number", 8, "a person indoors while away scores 10"],
+    ["alarm.cameras", "Cameras", "list", [], "empty = every outdoor Dahua"],
+    ["alarm.light_minutes", "Warning lights for (min)", "number", 15],
+    ["alarm.siren", "Siren", "bool", false],
+    ["alarm.siren_on_seconds", "Siren on (s)", "number", 10],
+    ["alarm.siren_off_seconds", "Siren pause (s)", "number", 20],
+    ["alarm.siren_rounds", "Siren rounds", "number", 3],
   ]},
   {title: "Watchdog", desc: "Restart a camera whose stream died: power-cycle its smart plug through Home Assistant, or reboot a Dahua through its API.", fields: [
     ["watchdog.enabled", "Enabled", "bool", true],
@@ -335,6 +365,13 @@ function renderSettings() {
     grid.className = "fields";
     for (const f of s.fields) grid.appendChild(field(config, f));
     card.appendChild(grid);
+    if (s.test) {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML = `<button class="btn" data-act="test">Test the alarm now</button><small class="muted">Triggers it for real with the saved settings; disarm to stop.</small>`;
+      row.querySelector("button").onclick = async () => { await fetch("api/alarm/trigger", {method: "POST"}); loadAlarm(); };
+      card.appendChild(row);
+    }
     root.appendChild(card);
   }
 
@@ -491,6 +528,7 @@ async function restart() {
 }
 
 loadAway();
+loadAlarm();
 loadLive().catch(e => { $("status").textContent = "failed to load cameras: " + e; });
 </script>
 </body>

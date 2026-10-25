@@ -11,6 +11,7 @@ import uvicorn
 from . import detection, go2rtc, recorder, retention
 from .config import load_config
 from .db import Database
+from .alarm import Alarm, AlarmConfig
 from .events import EventEngine, RulesConfig
 from .web import create_app
 
@@ -24,9 +25,12 @@ async def main() -> None:
     cfg = load_config()
     db = Database(cfg.paths.data / "smartcam.db")
     engine = EventEngine(cfg, db, RulesConfig(**cfg.rules))
+    alarm = None
+    if AlarmConfig(**cfg.alarm).enabled:
+        alarm = Alarm(cfg, db, engine)
     if cfg.mqtt.enabled:
         from .ha.mqtt import HaMqtt
-        mqtt = HaMqtt(cfg, engine)
+        mqtt = HaMqtt(cfg, engine, alarm)
     if cfg.ha.enabled:
         from .ha.notify import HaNotifier
         HaNotifier(cfg, engine)
@@ -35,20 +39,26 @@ async def main() -> None:
     if (wd := PowerWatchdog(cfg)).last_frame:   # any camera it can restart
         watchdog = wd
     restart = asyncio.Event()
-    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine, restart), host="0.0.0.0", port=cfg.web.port,
+    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine, restart, alarm), host="0.0.0.0", port=cfg.web.port,
                                            log_level="warning", lifespan="off"))  # no startup hooks
-    async with asyncio.TaskGroup() as tg:
-        tg.create_task(go2rtc.run(cfg))
-        await asyncio.sleep(2)  # let go2rtc open its RTSP port before anything connects
-        tg.create_task(recorder.run(cfg))
-        tg.create_task(retention.run(cfg, db))
-        tg.create_task(detection.run(cfg, engine, watchdog))
-        if watchdog is not None:
-            tg.create_task(watchdog.run())
-        tg.create_task(server.serve())
-        if cfg.mqtt.enabled:
-            tg.create_task(mqtt.run())
-        tg.create_task(_restart_on(restart))
+    if alarm is not None:
+        await alarm.startup()
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(go2rtc.run(cfg))
+            await asyncio.sleep(2)  # let go2rtc open its RTSP port before anything connects
+            tg.create_task(recorder.run(cfg))
+            tg.create_task(retention.run(cfg, db))
+            tg.create_task(detection.run(cfg, engine, watchdog))
+            if watchdog is not None:
+                tg.create_task(watchdog.run())
+            tg.create_task(server.serve())
+            if cfg.mqtt.enabled:
+                tg.create_task(mqtt.run())
+            tg.create_task(_restart_on(restart))
+    finally:
+        if alarm is not None:
+            await alarm.close()   # an alarm in progress switches its lights and sirens off
 
 
 async def _restart_on(event: asyncio.Event) -> None:

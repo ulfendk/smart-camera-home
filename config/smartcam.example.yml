@@ -61,6 +61,16 @@ watchdog:               # restarts cameras whose stream died
   cooldown_minutes: 30
   max_per_day: 4
 
+alarm:                  # arm from HA (alarm_control_panel.smartcam_alarm) or the web UI
+  enabled: true
+  trigger_score: 8      # a person indoors while away scores 10
+  cameras: []           # whose red/blue warning lights are used; empty = every outdoor Dahua
+  light_minutes: 15
+  siren: false          # many cameras refuse siren commands; enable once tested
+  siren_on_seconds: 10
+  siren_off_seconds: 20
+  siren_rounds: 3
+
 paths:
   data: data            # recordings, clips, db; relative to the install dir
 

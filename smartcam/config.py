@@ -124,6 +124,7 @@ class Config(BaseModel):
     rules: dict = {}  # validated by events.RulesConfig
     lights: dict = {}  # validated by lights.controller.LightsConfig
     watchdog: dict = {}  # validated by power.WatchdogConfig
+    alarm: dict = {}  # validated by alarm.AlarmConfig
     path: Path | None = None  # the file this was loaded from (the settings UI writes it)
 
 
@@ -152,7 +153,7 @@ def load_config(path: Path | None = None) -> Config:
     mqtt = {k: _expand_env(v) if isinstance(v, str) else v for k, v in raw["mqtt"].items()}
     ha = {k: _expand_env(v) if isinstance(v, str) else v for k, v in raw.get("ha", {}).items()}
     cfg = Config(cameras=cameras, mqtt=mqtt, ha=ha, path=path,
-                 **{k: raw[k] for k in ("paths", "record", "detect", "go2rtc", "web", "rules", "lights", "watchdog") if k in raw})
+                 **{k: raw[k] for k in ("paths", "record", "detect", "go2rtc", "web", "rules", "lights", "watchdog", "alarm") if k in raw})
     # Relative paths are relative to the repo root, not the working directory.
     if not cfg.paths.data.is_absolute():
         cfg.paths.data = ROOT / cfg.paths.data

@@ -81,6 +81,9 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 - Home Assistant, with `mqtt` enabled: `switch.smartcam_away`, plus a person sensor and a snapshot
   camera per camera. With `ha` enabled: push notifications through `notify.mobile_app_*`, each with
   its own snapshot.
+- Alarm mode: `alarm_control_panel.smartcam_alarm` in Home Assistant. Arming switches on away mode;
+  a serious event while armed (by default a person indoors, or loitering at a door at night) flashes
+  the Dahua red/blue warning lights for 15 minutes, then stays quiet until disarmed and armed again.
 
 ## Configuration
 
@@ -91,6 +94,7 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 | `lights` | Dahua white light; `dry_run: true` only logs what it would switch |
 | `mqtt` / `ha` | Home Assistant entities and push notifications |
 | `detect` | fps, hardware decoding, model |
+| `alarm` | alarm mode: trigger score, red/blue warning lights, optional siren rounds |
 | `record` | what stays on disk: a rolling buffer of everything (`continuous_hours`), event clips and snapshots (`event_days`), and a free-space guard (`min_free_gb`) |
 
 `${VAR}` and `${VAR:-default}` are filled in from the environment or `.env`.
@@ -141,9 +145,8 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 
 ## Roadmap
 
-- Alarm mode: arm/disarm from Home Assistant; when triggered, the Dahua red/blue warning lights
-  flash for 10-15 minutes and the siren sounds in bursts (e.g. 10 s on, a pause, a few rounds),
-  then everything stays off until disarmed and triggered again
+- Siren for cameras that refuse the siren command (e.g. by switching on the camera's own "play
+  alarm sound" event rule while the alarm is active)
 - Live camera streams in Home Assistant dashboards (go2rtc on the LAN)
 - Speed events for passing vehicles: estimated speed from a per-camera calibration (two road
   marks a known distance apart), with the best full-resolution shot of the vehicle, its licence

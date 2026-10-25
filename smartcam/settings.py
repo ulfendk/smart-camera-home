@@ -109,6 +109,7 @@ class Settings:
 
     def validate(self, text: str) -> None:
         """Raise ValueError if the config would not load. Uses the same loader as startup."""
+        from .alarm import AlarmConfig
         from .events import RulesConfig
         from .lights.controller import LightsConfig
         from .power import WatchdogConfig
@@ -120,6 +121,7 @@ class Settings:
             RulesConfig(**cfg.rules)
             LightsConfig(**cfg.lights)
             WatchdogConfig(**cfg.watchdog)
+            AlarmConfig(**cfg.alarm)
         except Exception as e:
             raise ValueError(str(e)) from e
         finally:

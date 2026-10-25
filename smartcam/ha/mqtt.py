@@ -39,6 +39,10 @@ def discovery_messages(cfg: Config) -> list[tuple[str, dict]]:
         msgs.append((f"{d}/camera/smartcam/{name}_snapshot/config", {
             "name": f"{name} snapshot", "unique_id": f"smartcam_{name}_snapshot",
             "default_entity_id": f"camera.smartcam_{name}_snapshot", "topic": f"{p}/{name}/snapshot", "device": device, **avail}))
+    msgs.append((f"{d}/alarm_control_panel/smartcam/alarm/config", {
+        "name": "Alarm", "unique_id": "smartcam_alarm", "default_entity_id": "alarm_control_panel.smartcam_alarm",
+        "state_topic": f"{p}/alarm/state", "command_topic": f"{p}/alarm/set", "supported_features": ["arm_away"],
+        "code_arm_required": False, "code_disarm_required": False, "device": device, **avail}))
     for n in range(1, cfg.mqtt.alert_slots + 1):
         msgs.append((f"{d}/camera/smartcam/alert_{n}/config", {
             "name": f"alert {n}", "unique_id": f"smartcam_alert_{n}", "default_entity_id": f"camera.smartcam_alert_{n}",
@@ -47,8 +51,8 @@ def discovery_messages(cfg: Config) -> list[tuple[str, dict]]:
 
 
 class HaMqtt:
-    def __init__(self, cfg: Config, engine: EventEngine):
-        self.cfg, self.engine = cfg, engine
+    def __init__(self, cfg: Config, engine: EventEngine, alarm=None):
+        self.cfg, self.engine, self.alarm = cfg, engine, alarm
         self.client: aiomqtt.Client | None = None
         self.open_events: dict[str, set[int]] = {name: set() for name in cfg.cameras}
         engine.on_open.append(self._event_open)
@@ -57,6 +61,8 @@ class HaMqtt:
         engine.on_alert.insert(0, self._publish_alert_image)
         engine.on_clip.insert(0, self._publish_alert_image)
         engine.on_away.append(self._publish_away)
+        if alarm is not None:
+            alarm.on_state.append(self._publish_alarm)
 
     async def run(self) -> None:
         m, p = self.cfg.mqtt, self.cfg.mqtt.topic_prefix
@@ -73,9 +79,16 @@ class HaMqtt:
                     for name in self.cfg.cameras:
                         await client.publish(f"{p}/{name}/person", "OFF", retain=True)
                     await client.subscribe(f"{p}/away/set")
+                    if self.alarm is not None:
+                        await self._publish_alarm(self.alarm.state)
+                        await client.subscribe(f"{p}/alarm/set")
                     log.info("connected to MQTT %s:%d", m.host, m.port)
                     async for msg in client.messages:
-                        await self.engine.set_away(msg.payload.decode().upper() == "ON")
+                        payload = msg.payload.decode()
+                        if msg.topic.matches(f"{p}/alarm/set") and self.alarm is not None:
+                            await self.alarm.command(payload)
+                        else:
+                            await self.engine.set_away(payload.upper() == "ON")
             except aiomqtt.MqttError as e:
                 self.client = None
                 log.warning("MQTT connection lost (%s); retrying in 10s", e)
@@ -84,6 +97,9 @@ class HaMqtt:
     async def _publish(self, topic: str, payload, retain: bool = True) -> None:
         if self.client is not None:
             await self.client.publish(f"{self.cfg.mqtt.topic_prefix}/{topic}", payload, retain=retain)
+
+    async def _publish_alarm(self, state: str) -> None:
+        await self._publish("alarm/state", state)
 
     async def _publish_away(self, away: bool) -> None:
         await self._publish("away/state", "ON" if away else "OFF")
