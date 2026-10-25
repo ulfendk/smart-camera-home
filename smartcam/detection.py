@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from .config import CameraConfig, Config
 from .events import EventEngine
 from .ingest import Frame, live_frames
-from .lights.controller import LightController, LightsConfig
+from .lights.controller import LightController, LightsConfig, SunDark
 from .lights.dahua import DahuaLight
 from .pipeline import CameraPipeline
 from .power import PowerWatchdog
@@ -26,6 +26,9 @@ async def _latest(cfg: Config, camera: str, slot: asyncio.Queue) -> None:
         slot.put_nowait(frame)
 
 
+_sun: SunDark | None = None
+
+
 async def make_light(cfg: Config, cam: CameraConfig) -> LightController | None:
     lights = LightsConfig(**cfg.lights)
     wanted = lights.cameras or [c.name for c in cfg.cameras.values() if c.vendor == "dahua" and c.location == "outdoor"]
@@ -37,7 +40,10 @@ async def make_light(cfg: Config, cam: CameraConfig) -> LightController | None:
         await light.restore_after_crash()
     except Exception:
         log.exception("light %s: could not restore settings", cam.name)
-    return LightController(lights, light, cam.name)
+    global _sun
+    if cfg.ha.enabled and _sun is None:
+        _sun = SunDark(cfg.ha.url, cfg.ha.token)
+    return LightController(lights, light, cam.name, _sun if cfg.ha.enabled else None)
 
 
 async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngine,

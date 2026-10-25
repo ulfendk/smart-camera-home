@@ -1,12 +1,15 @@
 """Switch a camera's light on while a confirmed person is moving in view after dark.
 
-"Dark" is measured from the image (mean brightness) while the light is off, so it follows real
-light conditions (early winter dusk, floodlit driveway) instead of a clock. Once on, the light
-stays on for `on_seconds` after the last sighting, and won't come back within `cooldown`.
+"Dark" comes from Home Assistant (the sun below the horizon) when it is connected: full-colour
+night cameras make the night picture nearly as bright as day, so the image cannot tell. Without
+Home Assistant it is measured from the image (mean brightness) while the light is off. Once on, the
+light stays on for `on_seconds` after the last sighting, and won't come back within `cooldown`.
 """
 
 import asyncio
 import logging
+import time
+from collections.abc import Awaitable, Callable
 
 import cv2
 from pydantic import BaseModel
@@ -26,9 +29,29 @@ class LightsConfig(BaseModel):
     dark_threshold: float = 70    # mean luma (0-255) below which the scene counts as dark
 
 
+class SunDark:
+    """Is the sun below the horizon? Asked of Home Assistant at most once a minute, shared by cameras."""
+
+    def __init__(self, ha_url: str, token: str):
+        import httpx
+        self.http = httpx.AsyncClient(base_url=ha_url, timeout=10, headers={"Authorization": f"Bearer {token}"})
+        self.value: bool | None = None
+        self.checked = 0.0
+
+    async def __call__(self) -> bool | None:
+        if time.monotonic() - self.checked > 60:
+            self.checked = time.monotonic()
+            try:
+                r = await self.http.get("/api/states/sun.sun")
+                self.value = r.json().get("state") == "below_horizon" if r.status_code == 200 else None
+            except Exception:
+                self.value = None
+        return self.value
+
+
 class LightController:
-    def __init__(self, cfg: LightsConfig, light, camera: str):
-        self.cfg, self.light, self.camera = cfg, light, camera
+    def __init__(self, cfg: LightsConfig, light, camera: str, dark_fn: Callable[[], Awaitable[bool | None]] | None = None):
+        self.cfg, self.light, self.camera, self.dark_fn = cfg, light, camera, dark_fn
         self.dark = False
         self.on_since: float | None = None
         self.last_seen = 0.0
@@ -42,7 +65,8 @@ class LightController:
     async def handle(self, res: FrameResult, confirmed_ids: set[int]) -> None:
         now = res.frame.ts
         if self.on_since is None:
-            self.dark = self.brightness(res.frame.image) < self.cfg.dark_threshold
+            sun = await self.dark_fn() if self.dark_fn is not None else None
+            self.dark = sun if sun is not None else self.brightness(res.frame.image) < self.cfg.dark_threshold
         person = any(t.id in confirmed_ids and t.label == "person" and t.last_ts == now and t.moving
                      for t in res.tracks)
         if person:

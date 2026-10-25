@@ -65,3 +65,15 @@ def test_cooldown_prevents_flicker():
 def test_parse_dahua_table():
     t = parse_table("table.Lighting_V2[0][1][0].Mode=Auto\r\ntable.Lighting_V2[0][1][0].MiddleLight[0].Light=50\r\n")
     assert t == {"Lighting_V2[0][1][0].Mode": "Auto", "Lighting_V2[0][1][0].MiddleLight[0].Light": "50"}
+
+
+
+def test_sun_decides_darkness_when_home_assistant_says_so():
+    import asyncio
+    light = FakeLight()
+
+    async def night():
+        return True
+    ctrl = LightController(LightsConfig(on_seconds=60), light, "front_door", dark_fn=night)
+    asyncio.run(ctrl.handle(result(0, 200, True), {1}))       # a bright full-colour night picture
+    assert light.calls == ["on"]
