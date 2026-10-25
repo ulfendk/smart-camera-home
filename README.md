@@ -110,7 +110,7 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 | `lights` | Dahua white light; `dry_run: true` only logs what it would switch |
 | `mqtt` / `ha` | Home Assistant entities and push notifications |
 | `detect` | fps, hardware decoding, model |
-| `alarm` | alarm mode: trigger score, red/blue warning lights, optional siren rounds |
+| `alarm` | alarm mode: trigger score, exit and entry delays, red/blue warning lights |
 | `record` | what stays on disk: a rolling buffer of everything (`continuous_hours`), event clips and snapshots (`event_days`), and a free-space guard (`min_free_gb`) |
 
 `${VAR}` and `${VAR:-default}` are filled in from the environment or `.env`.
@@ -164,8 +164,6 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 - "Armed home": a third alarm state that warns about suspicious behaviour outside while people are home
 - At home: no indoor recording, but room occupancy from the indoor cameras for Home Assistant's lights
 - Reading licence plates (OCR) on speed events
-- Siren for cameras that refuse the siren command (e.g. by switching on the camera's own "play
-  alarm sound" event rule while the alarm is active)
 
 ## License
 

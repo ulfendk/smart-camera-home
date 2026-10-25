@@ -257,17 +257,13 @@ const SECTIONS = [
     ["lights.cooldown", "Cooldown (s)", "number", 20],
     ["lights.dark_threshold", "Dark below (0-255)", "number", 70, "mean image brightness"],
   ]},
-  {title: "Alarm", desc: "Arm from Home Assistant (alarm_control_panel.smartcam_alarm) or the button at the top. While armed, an event reaching the trigger score flashes the red/blue warning lights (and sounds the sirens, if enabled), then the alarm stays quiet until it is disarmed and armed again.", test: true, fields: [
+  {title: "Alarm", desc: "Arm from Home Assistant (alarm_control_panel.smartcam_alarm) or the button at the top. While armed, an event reaching the trigger score flashes the red/blue warning lights, then the alarm stays quiet until it is disarmed and armed again.", test: true, fields: [
     ["alarm.enabled", "Alarm mode", "bool", true],
     ["alarm.trigger_score", "Trigger at score", "number", 8, "a person indoors while away scores 10"],
     ["alarm.exit_delay", "Exit delay (s)", "number", 60, "after arming, time to leave before it is active"],
     ["alarm.entry_delay", "Entry delay (s)", "number", 30, "after a trigger, time to disarm before lights and push"],
     ["alarm.cameras", "Cameras", "list", [], "empty = every outdoor Dahua"],
     ["alarm.light_minutes", "Warning lights for (min)", "number", 15],
-    ["alarm.siren", "Siren", "bool", false],
-    ["alarm.siren_on_seconds", "Siren on (s)", "number", 10],
-    ["alarm.siren_off_seconds", "Siren pause (s)", "number", 20],
-    ["alarm.siren_rounds", "Siren rounds", "number", 3],
   ]},
   {title: "Presence simulation", desc: "While the alarm is armed, the lights replay a real evening from when you were home (Monday-Thursday, Friday, Saturday or Sunday; public holidays replay the latest Sunday), warped to today's sunrise and sunset. Learned from Home Assistant's light history, kept growing in SmartCam.", presence: true, fields: [
     ["presence.enabled", "Switch lights while armed", "bool", false, "off: only learns and previews (switch off another presence simulation first)"],

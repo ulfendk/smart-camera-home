@@ -6,7 +6,7 @@ from smartcam.alarm import ARMED, DISARMED, TRIGGERED, Alarm, AlarmConfig
 from smartcam.config import load_config
 from smartcam.db import Database
 from smartcam.events import EventEngine, OpenEvent, RulesConfig
-from smartcam.lights.dahua_rpc import SIREN, WARNING_LIGHT
+from smartcam.lights.dahua_rpc import WARNING_LIGHT
 
 TEST_CONFIG = Path(__file__).parent / "config.yml"
 
@@ -25,9 +25,8 @@ def setup(**ac):
     db = Database(cfg.paths.data / "t.db")
     engine = EventEngine(cfg, db, RulesConfig())
     out = FakeOutput()
-    alarm = Alarm(cfg, db, engine, AlarmConfig(**{"light_minutes": 0.001, "siren_on_seconds": 0.01,
-                                                  "siren_off_seconds": 0.01, "exit_delay": 0, "entry_delay": 0,
-                                                  **ac}), {"front_door": out})
+    alarm = Alarm(cfg, db, engine, AlarmConfig(**{"light_minutes": 0.001, "exit_delay": 0, "entry_delay": 0, **ac}),
+                  {"front_door": out})
     return alarm, engine, out
 
 
@@ -59,7 +58,6 @@ def test_serious_event_while_armed_flashes_lights_then_goes_quiet_and_stays_spen
         assert alarm.state == TRIGGERED
         await alarm._task
         assert out.calls[0] == (WARNING_LIGHT, True) and out.calls[-1] == (WARNING_LIGHT, False)
-        assert all(k != SIREN for k, _ in out.calls)  # siren off by default
         assert alarm.state == ARMED                   # back to armed...
         out.calls.clear()
         await alarm._scored(event(10))                # ...but spent until disarmed and armed again
@@ -68,16 +66,6 @@ def test_serious_event_while_armed_flashes_lights_then_goes_quiet_and_stays_spen
         await alarm._scored(event(10))
         assert alarm.state == TRIGGERED
         await alarm.close()
-    asyncio.run(go())
-
-
-def test_siren_rounds_when_enabled():
-    async def go():
-        alarm, engine, out = setup(siren=True, siren_rounds=2)
-        await alarm.arm()
-        await alarm.trigger()
-        await alarm._task
-        assert out.calls.count((SIREN, True)) == 2 and out.calls.count((SIREN, False)) >= 2
     asyncio.run(go())
 
 

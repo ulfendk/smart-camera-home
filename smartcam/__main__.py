@@ -75,7 +75,7 @@ async def main() -> None:
             tg.create_task(_restart_on(restart))
     finally:
         if alarm is not None:
-            await alarm.close()   # an alarm in progress switches its lights and sirens off
+            await alarm.close()   # an alarm in progress switches its warning lights off
 
 
 async def _restart_on(event: asyncio.Event) -> None:

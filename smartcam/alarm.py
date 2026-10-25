@@ -7,9 +7,8 @@ events that start after that can trigger, so nobody sets it off on the way out. 
 `entry_delay` seconds ("pending"), so coming home and disarming at the keypad cancels it. Disarming
 switches away mode off.
 
-When triggered: the outdoor Dahuas' red/blue warning lights come on for `light_minutes`, and, if
-`siren` is on, the sirens sound in rounds of `siren_on_seconds` with `siren_off_seconds` pauses. After
-that the alarm goes quiet and does not trigger again until it is disarmed and armed again.
+When triggered: the outdoor Dahuas' red/blue warning lights come on for `light_minutes`. After that
+the alarm goes quiet and does not trigger again until it is disarmed and armed again.
 """
 
 import asyncio
@@ -23,7 +22,7 @@ from pydantic import BaseModel
 from .config import Config
 from .db import Database
 from .events import EventEngine, OpenEvent
-from .lights.dahua_rpc import SIREN, WARNING_LIGHT, DahuaRpc
+from .lights.dahua_rpc import WARNING_LIGHT, DahuaRpc
 
 log = logging.getLogger(__name__)
 
@@ -37,10 +36,6 @@ class AlarmConfig(BaseModel):
     entry_delay: float = 30         # seconds between a trigger and the alarm going off (time to disarm)
     cameras: list[str] = []         # cameras whose deterrence is used; empty = every outdoor Dahua
     light_minutes: float = 15       # red/blue warning lights
-    siren: bool = False             # many cameras refuse siren commands; switch on once tested
-    siren_on_seconds: float = 10
-    siren_off_seconds: float = 20
-    siren_rounds: int = 3
 
 
 class Alarm:
@@ -147,19 +142,13 @@ class Alarm:
             try:
                 await out.output(kind, on)
             except Exception as e:
-                log.warning("alarm: %s %s %s failed: %s", name, "siren" if kind == SIREN else "light", "on" if on else "off", e)
+                log.warning("alarm: %s warning light %s failed: %s", name, "on" if on else "off", e)
         await asyncio.gather(*(one(n, o) for n, o in self.outputs.items()))
 
     async def _deter(self) -> None:
         light_end = asyncio.get_running_loop().time() + self.ac.light_minutes * 60
         try:
             await self._all(WARNING_LIGHT, True)
-            if self.ac.siren:
-                for _ in range(self.ac.siren_rounds):
-                    await self._all(SIREN, True)
-                    await asyncio.sleep(self.ac.siren_on_seconds)
-                    await self._all(SIREN, False)
-                    await asyncio.sleep(self.ac.siren_off_seconds)
             while (left := light_end - asyncio.get_running_loop().time()) > 0:
                 await asyncio.sleep(min(left, 60))
                 if light_end - asyncio.get_running_loop().time() > 0:
@@ -170,8 +159,6 @@ class Alarm:
                 await self._set_state(ARMED)   # armed, but spent until disarmed and armed again
 
     async def _quiet(self) -> None:
-        if self.ac.siren:
-            await self._all(SIREN, False)
         await self._all(WARNING_LIGHT, False)
 
     async def startup(self) -> None:

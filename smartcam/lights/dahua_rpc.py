@@ -1,7 +1,6 @@
 """Dahua RPC2 (JSON over HTTP), for what the CGI API refuses on these cameras: the deterrence outputs.
 
-The red/blue warning light ("WhiteLight" in CoaxialControlIO) and the siren ("Speaker") are switched
-with CoaxialControlIO.control. The camera's own web UI sends exactly these calls. Login is Dahua's
+The red/blue warning light ("WhiteLight" in CoaxialControlIO) is switched with CoaxialControlIO.control. The camera's own web UI sends exactly these calls. Login is Dahua's
 two-step challenge (from the web UI's rpcCore.js; the Home Assistant Dahua integration does the same).
 """
 
@@ -12,7 +11,7 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-WARNING_LIGHT, SIREN = 1, 2   # CoaxialControlIO types
+WARNING_LIGHT = 1   # CoaxialControlIO type of the red/blue warning light
 
 
 class RpcError(Exception):

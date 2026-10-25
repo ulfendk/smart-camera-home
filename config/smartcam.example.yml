@@ -75,10 +75,6 @@ alarm:                  # arm from HA (alarm_control_panel.smartcam_alarm) or th
   entry_delay: 30       # seconds between a trigger and the alarm going off (time to disarm)
   cameras: []           # whose red/blue warning lights are used; empty = every outdoor Dahua
   light_minutes: 15
-  siren: false          # many cameras refuse siren commands; enable once tested
-  siren_on_seconds: 10
-  siren_off_seconds: 20
-  siren_rounds: 3
 
 presence:               # presence simulation while the alarm is armed (needs the ha section)
   enabled: false
