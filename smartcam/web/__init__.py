@@ -5,6 +5,7 @@ go2rtc's player is proxied under go2rtc/ for the same reason: one port, reachabl
 """
 
 import asyncio
+import re
 from pathlib import Path
 
 import httpx
@@ -33,8 +34,21 @@ class Review(BaseModel):
     review: str | None  # 'ok', 'false_positive' or null
 
 
+class CollapseSlashes:
+    """Treat //path as /path. Home Assistant ingress forwards the entry page as "//"."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket") and "//" in scope["path"]:
+            scope = {**scope, "path": re.sub(r"/{2,}", "/", scope["path"])}
+        await self.app(scope, receive, send)
+
+
 def create_app(cfg: Config, db: Database, engine: EventEngine) -> FastAPI:
     app = FastAPI(title="smartcam")
+    app.add_middleware(CollapseSlashes)
     for sub in ("recordings", "snapshots", "clips"):
         (cfg.paths.data / sub).mkdir(parents=True, exist_ok=True)
         app.mount(f"/media/{sub}", StaticFiles(directory=cfg.paths.data / sub), name=sub)

@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # Writes the nginx server config from the add-on options.
 bashio::var.json \
-    entry "$(bashio::addon.ingress_entry)" \
+    entry "$(bashio::app.ingress_entry)" \
     server "$(bashio::config 'server' | sed 's#/*$##')" \
     | tempio \
         -template /etc/nginx/templates/ingress.gtpl \

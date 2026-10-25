@@ -1,5 +1,5 @@
 name: smartcam proxy
-version: "0.1.0"
+version: "0.1.1"
 slug: smartcam_proxy
 description: Opens the smartcam web UI in the Home Assistant sidebar
 url: "https://github.com/ulfendk/smart-camera-home/tree/main/smartcam_proxy"
@@ -11,7 +11,6 @@ boot: auto
 init: false
 ingress: true
 ingress_port: 8099
-ingress_entry: /
 panel_icon: "mdi:cctv"
 panel_title: smartcam
 panel_admin: false
