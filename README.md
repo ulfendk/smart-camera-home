@@ -49,19 +49,14 @@ SmartCam per set of cameras: two would fight over the lights and the MQTT client
 ## Running on a Mac (development)
 
 ```bash
-scripts/setup_mac.sh            # Homebrew tools, go2rtc, Coral runtime, venv
+scripts/setup_mac.sh            # Homebrew tools, go2rtc, venv, YOLO11 models
 cp config/smartcam.example.yml config/smartcam.yml
 cp .env.example .env            # camera / MQTT / HA credentials (never committed)
 uv run python -m SmartCam       # go2rtc + recording + detection + web UI
 ```
 
-Detection uses YOLO11 exported to ONNX (`models/`, not in git); on Apple Silicon it runs through
-CoreML (~33 ms per frame for YOLO11m). To create the models:
-
-```bash
-uvx --python 3.12 --from "ultralytics==8.3.*" --with onnx --with onnxslim \
-  yolo export model=yolo11m.pt format=onnx imgsz=640 simplify=True
-```
+Detection uses YOLO11 exported to ONNX (`models/`, not in git, created by the setup script); on Apple
+Silicon it runs through CoreML (~33 ms per frame for YOLO11m).
 
 Run the tests with `uv run pytest`.
 
@@ -149,7 +144,7 @@ smartcam/
   ha/              MQTT discovery and push notifications
   lights/          Dahua white light and the controller that switches it
   web/             FastAPI + single-page UI
-tools/             probe, Coral check, regression tooling
+tools/             camera probe, regression tooling
 site/              the project website (GitHub Pages)
 smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 ```
@@ -160,7 +155,6 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 - Presence simulation while armed, learned from the home's own light history in Home Assistant
 - Siren for cameras that refuse the siren command (e.g. by switching on the camera's own "play
   alarm sound" event rule while the alarm is active)
-- Coral USB as a fast first pass in front of the GPU
 
 ## License
 

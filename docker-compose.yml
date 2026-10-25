@@ -11,7 +11,6 @@ services:
       TZ: ${TZ:-UTC}                   # recordings are filed by local time
     devices:
       - /dev/dri/renderD128:/dev/dri/renderD128   # Intel iGPU (VAAPI decoding)
-      - /dev/bus/usb:/dev/bus/usb                 # Coral USB (optional)
     deploy:
       resources:
         reservations:
