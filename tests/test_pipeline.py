@@ -68,6 +68,15 @@ def test_person_coming_into_view_is_confirmed_on_its_first_confident_frame():
     assert [bool(r.confirmed) for r in results] == [False, False, False, True, False]
 
 
+def test_busy_scene_detects_every_other_motion_frame():
+    """Trees in the wind: once motion is in most frames, detection drops back to save the GPU."""
+    p = CameraPipeline(CAM, Scripted([]))
+    p.motion = Moving()
+    detected = [p.process(frame(i / 5)).detections is not None for i in range(400)]
+    assert all(detected[:15])                        # a quiet scene until now: every motion frame
+    assert 30 <= sum(detected[-100:]) <= 55          # motion all the time: every 0.4 s at most
+
+
 def test_faint_static_track_does_not_heat_map():
     sm = StaticMap(hot_threshold=1)
     p = CameraPipeline(CAM, Scripted([[Detection("person", 0.35, LAMP)] for _ in range(100)]), sm)

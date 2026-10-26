@@ -20,7 +20,9 @@ class PipelineConfig:
     confirm_score: float = 0.5
     hot_confirm_score: float = 0.7   # in places the static map knows for false positives
     detect_refresh: float = 5.0      # detect at least this often so parked objects stay known
-    idle_detect_interval: float = 0.0  # motion with nothing tracked: every frame, so a person coming into view isn't missed
+    idle_detect_interval: float = 0.4  # ongoing motion with nothing tracked (trees in wind): detect at most this often
+    quiet_scene: float = 0.3         # ...but every frame where motion is rare (under this share of frames over
+    busy_window: float = 60.0        # about this many seconds), so a person coming into view is caught at once
     static_min_age: float = 10.0     # a never-moving track must last this long to heat the static map
 
 
@@ -49,6 +51,7 @@ class CameraPipeline:
         self.confirmed_ids: set[int] = set()
         self.ever_moved: set[int] = set()
         self.last_detect = float("-inf")
+        self.busy, self.last_ts = 0.0, None   # share of recent frames with motion (moving average)
 
     def _filter(self, dets: list[Detection]) -> list[Detection]:
         if not self.cam.person_mask:
@@ -58,12 +61,17 @@ class CameraPipeline:
 
     def process(self, frame: Frame) -> FrameResult:
         motion = self.motion.update(frame.image)
+        if self.last_ts is not None:
+            a = min(1.0, max(0.0, frame.ts - self.last_ts) / self.cfg.busy_window)
+            self.busy += a * (motion.active - self.busy)
+        self.last_ts = frame.ts
         since = frame.ts - self.last_detect
         tracking = any(not t.stationary for t in self.tracker.tracks.values())
         if tracking:
             due = True                                      # follow moving objects at full rate
         elif motion.active:
-            due = since >= self.cfg.idle_detect_interval    # motion, nothing tracked yet
+            quiet = self.busy < self.cfg.quiet_scene
+            due = quiet or since >= self.cfg.idle_detect_interval   # motion, nothing tracked yet
         else:
             due = since >= self.cfg.detect_refresh
         if not due:
