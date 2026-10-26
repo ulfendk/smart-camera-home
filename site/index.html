@@ -127,6 +127,9 @@
   .install { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; align-items: start; }
   @media (max-width: 900px) { .install { grid-template-columns: 1fr; } }
   .install ol { margin: 0; padding-left: 20px; }
+  .install p { margin: 0 0 12px; }
+  .install li p { margin: 10px 0; }
+  .install-h { margin: 40px 0 16px; }
   .install li { margin-bottom: 10px; }
   pre { margin: 0; padding: 16px 20px; overflow-x: auto; font-size: 13px; line-height: 1.6; background: #1c1c1c; color: #e1e1e1; border-radius: var(--radius); }
   pre .c { color: #8a8a8a; }
@@ -273,7 +276,7 @@
         <ol>
           <li>Create a data folder and put your config in it as <code>smartcam.yml</code>, starting from the <a href="https://github.com/ulfendk/smart-camera-home/blob/main/config/smartcam.example.yml">example config</a>.</li>
           <li>Start the stack with <code>docker compose up -d</code>, or as a Portainer stack straight from the repository.</li>
-          <li>Open the web UI on port 8971, or install the SmartCam add-on to have it in the Home Assistant sidebar. Everything else is set up in its Settings tab.</li>
+          <li>Open the web UI on port 8971, or add it to the Home Assistant sidebar (below). Everything else is set up in its Settings tab.</li>
         </ol>
         <div class="req">
           <span class="chip"><span class="mdi mdi-docker"></span>Docker</span>
@@ -299,6 +302,26 @@
               <span class="k">capabilities:</span> [gpu]
     <span class="k">volumes:</span>
       - /srv/smartcam:/app/data   <span class="c"># smartcam.yml + recordings</span></pre>
+    </div>
+
+    <h3 id="sidebar" class="install-h">In the Home Assistant sidebar</h3>
+    <div class="install">
+      <div>
+        <p>The SmartCam add-on puts the web UI in Home Assistant's sidebar and the companion app, behind Home Assistant's login and wherever Home Assistant reaches, remote access included. It only forwards to your SmartCam server, so it is light enough for a Raspberry Pi. It needs Home Assistant OS or a Supervised install.</p>
+        <ol>
+          <li>Add the repository to the add-on store:
+            <p><a class="btn filled" href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fulfendk%2Fsmart-camera-home"><span class="mdi mdi-home-assistant"></span>Add to Home Assistant</a></p>
+            or by hand: <b>Settings → Add-ons → Add-on Store → ⋮ → Repositories</b>, and add <code>https://github.com/ulfendk/smart-camera-home</code>.</li>
+          <li>Find <b>SmartCam</b> in the store (reload the page if it isn't there yet) and install it.</li>
+          <li>On its <b>Configuration</b> tab, set <code>server</code> to your SmartCam address as Home Assistant sees it.</li>
+          <li>Start the add-on and switch on <b>Show in sidebar</b>.</li>
+        </ol>
+      </div>
+<pre><span class="c"># add-on configuration</span>
+<span class="k">server:</span> "http://192.168.1.10:8971"
+<span class="c"># http:// or https://, host and port.
+# Live view goes through the same address,
+# so nothing else has to be reachable.</span></pre>
     </div>
   </div>
 </section>
