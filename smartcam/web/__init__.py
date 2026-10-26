@@ -48,7 +48,7 @@ class CollapseSlashes:
 
 
 def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.Event | None = None,
-               alarm=None, presence=None) -> FastAPI:
+               alarm=None, presence=None, doorbell=None) -> FastAPI:
     app = FastAPI(title="SmartCam")
     app.add_middleware(CollapseSlashes)
     for sub in ("recordings", "snapshots", "clips"):
@@ -160,6 +160,14 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
             return await HaCameras(cfg).ensure()
         except ValueError as e:
             raise HTTPException(400, str(e))
+
+    @app.post("/api/doorbell")
+    async def doorbell_test() -> dict:
+        """Ring the doorbell picture by hand (a test of the cameras and the push)."""
+        if doorbell is None:
+            raise HTTPException(404, "the doorbell is not set up")
+        doorbell.last = 0
+        return {"event": await doorbell.ring()}
 
     @app.get("/api/presence")
     async def presence_preview() -> dict:

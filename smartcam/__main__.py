@@ -42,6 +42,10 @@ async def main() -> None:
         from .ha.person_lights import PersonLights, PersonLightsConfig
         if PersonLightsConfig(**cfg.person_lights).enabled:
             PersonLights(cfg, engine)
+    doorbell = None
+    if cfg.ha.enabled and cfg.doorbell.get("entity"):
+        from .ha.doorbell import Doorbell
+        doorbell = Doorbell(cfg, db, mqtt if cfg.mqtt.enabled else None)
     presence = None
     from .presence import PresenceConfig, PresenceSimulator
     pc = PresenceConfig(**cfg.presence)
@@ -52,7 +56,7 @@ async def main() -> None:
     if (wd := PowerWatchdog(cfg)).last_frame:   # any camera it can restart
         watchdog = wd
     restart = asyncio.Event()
-    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine, restart, alarm, presence), host="0.0.0.0", port=cfg.web.port,
+    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine, restart, alarm, presence, doorbell), host="0.0.0.0", port=cfg.web.port,
                                            log_level="warning", lifespan="off"))  # no startup hooks
     if alarm is not None:
         await alarm.startup()
@@ -75,6 +79,8 @@ async def main() -> None:
                 tg.create_task(presence.run())
             if alarm is not None:
                 tg.create_task(alarm.morning_clock())
+            if doorbell is not None:
+                tg.create_task(doorbell.run())
             tg.create_task(_restart_on(restart))
     finally:
         if alarm is not None:

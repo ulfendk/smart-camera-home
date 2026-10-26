@@ -55,6 +55,10 @@ def discovery_messages(cfg: Config) -> list[tuple[str, dict]]:
                 "device_class": "speed", "state_class": "measurement", "state_topic": f"{p}/{name}/vehicle_speed",
                 "json_attributes_topic": f"{p}/{name}/vehicle_speed/attributes", "icon": "mdi:car-speed-limiter",
                 "device": device, **avail}))
+    if cfg.doorbell.get("entity"):
+        msgs.append((f"{d}/camera/smartcam/doorbell/config", {
+            "name": "doorbell", "unique_id": "smartcam_doorbell", "default_entity_id": "camera.smartcam_doorbell",
+            "topic": f"{p}/doorbell/snapshot", "device": device, **avail}))
     for n in range(1, cfg.mqtt.alert_slots + 1):
         msgs.append((f"{d}/camera/smartcam/alert_{n}/config", {
             "name": f"alert {n}", "unique_id": f"smartcam_alert_{n}", "default_entity_id": f"camera.smartcam_alert_{n}",

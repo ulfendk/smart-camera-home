@@ -123,7 +123,7 @@
 <main>
   <section id="live" class="grid"></section>
   <div id="event-filters" class="filters" hidden>
-    <select id="f-kind"><option value="">All events</option><option value="person">People</option><option value="vehicle">Vehicles</option><option value="notified">Notified only</option></select>
+    <select id="f-kind"><option value="">All events</option><option value="person">People</option><option value="vehicle">Vehicles</option><option value="doorbell">Doorbell</option><option value="notified">Notified only</option></select>
     <select id="f-camera"><option value="">All cameras</option></select>
     <select id="f-time"><option value="">Any time</option><option value="1h">Last hour</option><option value="today">Today</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option><option value="day">Pick a day…</option></select>
     <input type="date" id="f-day" hidden>
@@ -331,6 +331,13 @@ const SECTIONS = [
     ["person_lights.dark_entity", "Darkness sensor", "text", "", "e.g. a lux sensor; empty: the sun below the horizon"],
     ["person_lights.dark_below", "Dark below", "number", 50],
   ]},
+  {title: "Doorbell", desc: "When the bell's Home Assistant entity turns on, the chosen cameras are joined into one picture (camera.smartcam_doorbell), kept as an event and pushed.", doorbell: true, fields: [
+    ["doorbell.entity", "Doorbell entity", "text", "", "e.g. switch.doorbell_channel_1 or a binary_sensor"],
+    ["doorbell.cameras", "Cameras", "list", [], "side by side, e.g. front_door, hall"],
+    ["doorbell.notify", "Notify services", "list", [], "empty = the Home Assistant section's"],
+    ["doorbell.title", "Title", "text", "Doorbell"],
+    ["doorbell.message", "Message", "text", "Someone is at the door"],
+  ]},
   {title: "Watchdog", desc: "Restart a camera whose stream died: power-cycle its smart plug through Home Assistant, or reboot a Dahua through its API.", fields: [
     ["watchdog.enabled", "Enabled", "bool", true],
     ["watchdog.stale_seconds", "Dead after (s)", "number", 120, "without frames"],
@@ -453,6 +460,15 @@ function renderSettings() {
         const r = await fetch("api/ha/cameras", {method: "POST"}), body = await r.json().catch(() => ({}));
         note.textContent = r.ok ? Object.entries(body).map(([k, v]) => `${k}: ${v}`).join(" · ") : "Failed: " + (body.detail || r.status);
         btn.disabled = false;
+      };
+      card.appendChild(row);
+    }
+    if (s.doorbell) {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML = `<button class="btn outlined">Ring it now (test)</button><small class="muted">Takes the picture and sends the push, without the bell.</small>`;
+      row.querySelector("button").onclick = async () => {
+        const r = await fetch("api/doorbell", {method: "POST"}); row.querySelector("small").textContent = r.ok ? "Sent." : "Not set up (save and restart first).";
       };
       card.appendChild(row);
     }

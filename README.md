@@ -94,6 +94,9 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   nothing stored).
 - Camera clocks: Dahua clocks are set to this machine's time when they drift (every 6 hours), ONVIF cameras
   (`onvif_port`) get this machine's time zone, so the time in the picture is right.
+- Doorbell picture: when the bell's Home Assistant entity turns on, the chosen cameras (e.g. the front door
+  outside and the hall inside) are joined into one picture, `camera.smartcam_doorbell`, kept as a "doorbell"
+  event and pushed (time-sensitive).
 - Lights on people after dark: a camera's `person_lights` (Home Assistant lights) go to full brightness while a
   person is there after dark (sun below the horizon, or a lux sensor), and return to exactly how they were two
   minutes after the person has gone.

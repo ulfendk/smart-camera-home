@@ -81,6 +81,8 @@ class Database:
         elif kind == "vehicle":
             sql += f" and label in ({','.join('?' * len(self.VEHICLES))})"
             args += self.VEHICLES
+        elif kind == "doorbell":
+            sql += " and label = 'doorbell'"
         elif kind == "notified":
             sql += " and notified = 1"
         if since is not None:

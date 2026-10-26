@@ -115,6 +115,7 @@ class Settings:
         from .power import WatchdogConfig
         from .presence import PresenceConfig
         from .ha.person_lights import PersonLightsConfig
+        from .ha.doorbell import DoorbellConfig
         from .speed import SpeedConfig
 
         with tempfile.NamedTemporaryFile("w", suffix=".yml", dir=self.path.parent, delete=False) as f:
@@ -127,6 +128,7 @@ class Settings:
             AlarmConfig(**cfg.alarm)
             PresenceConfig(**cfg.presence)
             PersonLightsConfig(**cfg.person_lights)
+            DoorbellConfig(**cfg.doorbell)
             for cam in cfg.cameras.values():
                 SpeedConfig(**(cam.speed or {}))
         except Exception as e:
