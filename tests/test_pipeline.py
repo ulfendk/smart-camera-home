@@ -3,6 +3,7 @@ import numpy as np
 from smartcam.config import CameraConfig
 from smartcam.detect import Detection
 from smartcam.ingest import Frame
+from smartcam.motion import MotionResult
 from smartcam.pipeline import CameraPipeline
 from smartcam.static_map import StaticMap
 
@@ -47,6 +48,33 @@ def test_static_lamp_never_confirmed_and_heats_map():
     assert run(p, 100) == []
     run(p, 25, t0=30)  # no more detections: the lamp track ends
     assert sm.is_hot(LAMP, 40)
+
+
+class Moving:
+    """Motion stub: the whole frame is in motion."""
+
+    def update(self, image):
+        return MotionResult(np.full((36, 64), 255, np.uint8), 1.0, [(0, 0, 1, 1)])
+
+
+def test_person_coming_into_view_is_confirmed_on_its_first_confident_frame():
+    """Faint at first (dark doorway), then clear: every motion frame is detected and the faint hits count."""
+    scores = [0.3, 0.35, 0.4, 0.6, 0.8]
+    plan = [[Detection("person", s, (0.40 + i * 0.01, 0.3, 0.48 + i * 0.01, 0.6))] for i, s in enumerate(scores)]
+    p = CameraPipeline(CAM, Scripted(plan))
+    p.motion = Moving()
+    results = [p.process(frame(i / 5)) for i in range(len(scores))]
+    assert all(r.detections is not None for r in results)               # no frame skipped
+    assert [bool(r.confirmed) for r in results] == [False, False, False, True, False]
+
+
+def test_faint_static_track_does_not_heat_map():
+    sm = StaticMap(hot_threshold=1)
+    p = CameraPipeline(CAM, Scripted([[Detection("person", 0.35, LAMP)] for _ in range(100)]), sm)
+    p.cfg.detect_refresh = 0
+    run(p, 100)
+    run(p, 25, t0=30)
+    assert not sm.is_hot(LAMP, 40)
 
 
 def test_person_mask_drops_detections_with_feet_inside():

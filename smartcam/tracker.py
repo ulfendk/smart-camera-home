@@ -27,7 +27,7 @@ GROUPS = {"car": "vehicle", "truck": "vehicle", "bus": "vehicle", "motorcycle": 
 
 @dataclass
 class TrackerConfig:
-    new_track_score: float = 0.5     # a track must start from a confident detection (ByteTrack-style)
+    new_track_score: float = 0.3     # start early (a person stepping out of a dark doorway); confirming still needs 0.5
     match_score: float = 0.3         # weaker detections may only extend existing tracks
     max_age: float = 3.0             # seconds without a detection before a moving track ends
     stationary_max_age: float = 60.0 # stationary objects survive longer gaps (occlusion, detection cadence)

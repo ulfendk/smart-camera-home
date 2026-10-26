@@ -66,12 +66,12 @@ def test_fast_mover_without_overlap_keeps_one_track():
     assert len(tr.tracks) == 1
 
 
-def test_weak_detection_cannot_start_track_but_extends_one():
+def test_faint_detection_starts_a_track_noise_does_not():
     tr = Tracker()
-    tr.update(0, [Detection("person", 0.35, person_at(0.2))])
+    tr.update(0, [Detection("person", 0.25, person_at(0.2))])
     assert not tr.tracks
-    tr.update(0.2, [Detection("person", 0.7, person_at(0.2))])
-    tr.update(0.4, [Detection("person", 0.35, person_at(0.21))])
+    tr.update(0.2, [Detection("person", 0.35, person_at(0.2))])   # a person stepping out of a dark doorway
+    tr.update(0.4, [Detection("person", 0.7, person_at(0.21))])
     assert next(iter(tr.tracks.values())).hits == 2
 
 

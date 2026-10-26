@@ -20,7 +20,7 @@ class PipelineConfig:
     confirm_score: float = 0.5
     hot_confirm_score: float = 0.7   # in places the static map knows for false positives
     detect_refresh: float = 5.0      # detect at least this often so parked objects stay known
-    idle_detect_interval: float = 0.4  # motion with nothing tracked (trees in wind): detect at most this often
+    idle_detect_interval: float = 0.0  # motion with nothing tracked: every frame, so a person coming into view isn't missed
     static_min_age: float = 10.0     # a never-moving track must last this long to heat the static map
 
 
@@ -81,8 +81,9 @@ class CameraPipeline:
                 self.confirmed_ids.add(t.id)
                 confirmed.append(t)
         for t in ended:
+            # Only confident ones: faint tracks (started from 0.3) must not mark spots as false alarms.
             if (t.label in self.cfg.alert_labels and t.id not in self.ever_moved
-                    and t.age >= self.cfg.static_min_age):
+                    and t.age >= self.cfg.static_min_age and t.max_score >= self.cfg.confirm_score):
                 self.static_map.add(t.box, frame.ts)
             self.confirmed_ids.discard(t.id)
             self.ever_moved.discard(t.id)
