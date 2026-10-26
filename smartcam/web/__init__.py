@@ -6,12 +6,13 @@ go2rtc's player is proxied under go2rtc/ for the same reason: one port, reachabl
 
 import asyncio
 import re
+from datetime import datetime
 from pathlib import Path
 
 import httpx
 import websockets
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -114,6 +115,18 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
     def events(limit: int = 100, camera: str | None = None, min_score: float = 0, kind: str | None = None,
                since: float | None = None, until: float | None = None) -> list[dict]:
         return db.events(min(limit, 1000), camera or None, min_score, kind or None, since, until)
+
+    @app.get("/api/events/{event_id}/download/{kind}")
+    def download(event_id: int, kind: str) -> FileResponse:
+        """An event's picture, close-up or video as an attachment, so phones offer to save it."""
+        event = db.event(event_id)
+        rel = event and {"snapshot": event["snapshot"], "crop": event["crop"], "clip": event["clip"]}.get(kind)
+        if not rel or not (cfg.paths.data / rel).is_file():
+            raise HTTPException(404)
+        path = cfg.paths.data / rel
+        stamp = datetime.fromtimestamp(event["start_ts"]).strftime("%Y-%m-%d_%H-%M-%S")
+        name = f"smartcam_{event['camera']}_{stamp}{'_closeup' if kind == 'crop' else ''}{path.suffix}"
+        return FileResponse(path, filename=name)
 
     @app.post("/api/events/{event_id}/review")
     def review(event_id: int, body: Review) -> dict:

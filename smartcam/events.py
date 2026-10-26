@@ -17,12 +17,12 @@ import cv2
 import numpy as np
 from pydantic import BaseModel
 
-from .clips import cut_clip, frame_at
-from .speed import SpeedConfig
+from .clips import cut_clip, frame_at, frames_between
+from .speed import VEHICLES, SpeedConfig
 from .config import Config
 from .db import Database
 from .pipeline import FrameResult
-from .tracker import Track
+from .tracker import Track, iou
 
 log = logging.getLogger(__name__)
 
@@ -120,6 +120,7 @@ class EventEngine:
         self.on_away: list[Callable[[bool], Awaitable[None]]] = []
         self.on_score: list[Callable[[OpenEvent], Awaitable[None]]] = []   # when an event's score rises
         self.on_speed: list[Notifier] = []   # a vehicle speed event, once its best shot is in
+        self.detector = None                 # set by detection; finds the vehicle in the recording
         self.on_occupancy: list[Callable[[str, bool], Awaitable[None]]] = []   # (camera, occupied)
         self.snapshots = cfg.paths.data / "snapshots"
         self.clips = cfg.paths.data / "clips"
@@ -311,10 +312,12 @@ class EventEngine:
         await asyncio.sleep(max(0.0, mid + self.cfg.record.segment_seconds + 3 - time.time()))
         full = self.snapshots / f"{ev_id}_full.jpg"
         try:
-            if await asyncio.to_thread(frame_at, self.cfg, r.camera, mid, full):
-                img = cv2.imread(str(full))
+            found = await asyncio.to_thread(self._find_vehicle, r, mid)
+            if found is None and await asyncio.to_thread(frame_at, self.cfg, r.camera, mid, full):
+                found = cv2.imread(str(full)), r.box
+            if found is not None:
+                img, (x1, y1, x2, y2) = found
                 h, w = img.shape[:2]
-                x1, y1, x2, y2 = r.box
                 mx, my = (x2 - x1) * 0.15, (y2 - y1) * 0.15
                 crop = img[max(int((y1 - my) * h), 0):min(int((y2 + my) * h), h), max(int((x1 - mx) * w), 0):min(int((x2 + mx) * w), w)]
                 crop_path = self.snapshots / f"{ev_id}_vehicle.jpg"
@@ -338,9 +341,32 @@ class EventEngine:
             await self._safe(cb, event)
         await self._make_clip(ev_id, r.camera, min(r.t_a, r.t_b) - 2, max(r.t_a, r.t_b) + 2)
 
+    def _find_vehicle(self, r, mid: float, window: float = 2.5):
+        """The recorded frame where the vehicle is where it was measured, and its box there.
+
+        Recording and detection clocks differ by up to a second or two (segment names are whole
+        seconds, the streams lag differently), long enough for a car to leave the measured spot. So
+        look for it: run the detector over the frames around `mid` and keep the vehicle box that
+        overlaps the measured one most, or failing that lies nearest to it.
+        """
+        if self.detector is None:
+            return None
+        best, best_key = None, None
+        cx, cy = (r.box[0] + r.box[2]) / 2, (r.box[1] + r.box[3]) / 2
+        for _, img in frames_between(self.cfg, r.camera, mid - window, mid + window):
+            for d in self.detector.detect(img):
+                if d.label not in VEHICLES:
+                    continue
+                dist = np.hypot(d.center[0] - cx, d.center[1] - cy)
+                key = (iou(d.box, r.box), -dist)
+                if best_key is None or key > best_key:
+                    best, best_key = (img, d.box), key
+        return best
+
     @staticmethod
     async def _safe(notify: Notifier, event: dict) -> None:
         try:
             await notify(event)
         except Exception:
             log.exception("notifier %s failed for event %d", getattr(notify, "__name__", notify), event["id"])
+

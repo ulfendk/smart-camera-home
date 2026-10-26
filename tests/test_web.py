@@ -43,3 +43,21 @@ def test_event_filters():
     assert ids(kind="vehicle") == [2] and ids(kind="person") == [1] and ids(kind="notified") == [1]
     assert ids(camera="driveway") == [2]
     assert ids(since=150) == [2] and ids(until=150) == [1]
+
+
+
+def test_event_download_is_an_attachment():
+    cfg = load_config(TEST_CONFIG)
+    cfg.paths.data = Path(tempfile.mkdtemp())
+    db = Database(cfg.paths.data / "t.db")
+    c = TestClient(create_app(cfg, db, EventEngine(cfg, db, RulesConfig())))
+    (cfg.paths.data / "snapshots").mkdir(exist_ok=True)
+    (cfg.paths.data / "snapshots" / "1.jpg").write_bytes(b"jpeg")
+    ev = db.insert_event(camera="front_door", label="person", start_ts=1_700_000_000, max_score=0.9)
+    db.update_event(ev, snapshot="snapshots/1.jpg")
+    r = c.get(f"/api/events/{ev}/download/snapshot")
+    assert r.status_code == 200 and r.content == b"jpeg"
+    assert r.headers["content-disposition"].startswith('attachment; filename="smartcam_front_door_')
+    assert c.get(f"/api/events/{ev}/download/clip").status_code == 404      # no clip yet
+    assert c.get(f"/api/events/{ev}/download/db").status_code == 404        # only the event's media
+    assert c.get("/api/events/99/download/snapshot").status_code == 404

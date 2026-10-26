@@ -39,3 +39,29 @@ def test_either_direction_and_only_vehicles():
 
 def test_not_ready_without_calibration():
     assert not SpeedConfig().ready and SC.ready
+
+
+def test_best_shot_finds_the_vehicle_where_it_was_measured(monkeypatch, tmp_path):
+    """The recording runs late or early against detection: pick the frame where the car is at the measured box."""
+    from pathlib import Path
+    from types import SimpleNamespace
+    import numpy as np
+    from smartcam import events
+    from smartcam.config import load_config
+    from smartcam.db import Database
+    from smartcam.detect import Detection
+
+    cfg = load_config(Path(__file__).parent / "config.yml")
+    engine = events.EventEngine(cfg, Database(tmp_path / "t.db"))
+    frames = [np.full((4, 4, 3), i, np.uint8) for i in range(3)]
+    monkeypatch.setattr(events, "frames_between", lambda *a, **k: iter(enumerate(frames)))
+    # The car drives right to left; it is at the measured spot in frame 1 only. A person and a parked car are ignored.
+    boxes = {0: [Detection("car", 0.9, (0.6, 0.3, 0.8, 0.5))],
+             1: [Detection("car", 0.9, (0.41, 0.3, 0.61, 0.5)), Detection("person", 0.9, (0.4, 0.3, 0.6, 0.5))],
+             2: [Detection("car", 0.9, (0.1, 0.3, 0.3, 0.5)), Detection("car", 0.9, (0.0, 0.8, 0.1, 0.9))]}
+    engine.detector = SimpleNamespace(detect=lambda img: boxes[int(img[0, 0, 0])])
+    img, box = engine._find_vehicle(SimpleNamespace(camera="front_door", box=(0.4, 0.3, 0.6, 0.5)), 100.0)
+    assert img[0, 0, 0] == 1 and box == (0.41, 0.3, 0.61, 0.5)
+
+    engine.detector = None
+    assert engine._find_vehicle(SimpleNamespace(camera="front_door", box=(0.4, 0.3, 0.6, 0.5)), 100.0) is None

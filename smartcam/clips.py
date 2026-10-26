@@ -2,7 +2,11 @@
 
 import subprocess
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
+
+import cv2
+import numpy as np
 
 from .config import Config
 from .recorder import segment_start, segments
@@ -19,6 +23,27 @@ def frame_at(cfg: Config, camera: str, ts: float, out: Path) -> Path | None:
          "-i", str(segs[0]), "-frames:v", "1", "-q:v", "2", str(out)],
         check=True, capture_output=True, timeout=60)
     return out if out.exists() else None
+
+
+def frames_between(cfg: Config, camera: str, start: float, end: float, fps: float = 5) -> Iterator[tuple[float, np.ndarray]]:
+    """Full-resolution stills from the recording over [start, end], `fps` per second, one at a time.
+
+    The timestamps follow the segment names, which are only accurate to a second or so.
+    """
+    segs = segments(cfg, camera, start, end)
+    if not segs:
+        return
+    first = segment_start(segs[0])
+    with tempfile.TemporaryDirectory() as tmp:
+        listing = Path(tmp) / "list.txt"
+        listing.write_text("".join(f"file '{s}'\n" for s in segs))
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(listing),
+             "-ss", f"{max(start - first, 0):.2f}", "-t", f"{end - start:.2f}", "-vf", f"fps={fps}",
+             "-q:v", "2", f"{tmp}/%04d.jpg"],
+            check=True, capture_output=True, timeout=120)
+        for i, path in enumerate(sorted(Path(tmp).glob("*.jpg"))):
+            yield max(start, first) + i / fps, cv2.imread(str(path))
 
 
 def cut_clip(cfg: Config, camera: str, start: float, end: float, out: Path) -> Path | None:

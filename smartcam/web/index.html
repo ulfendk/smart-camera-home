@@ -51,6 +51,7 @@
   .score { font-weight: 500; }
   .score.high { color: var(--error); }
   .chip { font: inherit; font-size: 13px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 16px; background: none; color: var(--fg); cursor: pointer; }
+  a.chip { text-decoration: none; display: inline-block; }
   .chip[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); }
   [hidden] { display: none !important; }
   .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
@@ -228,17 +229,31 @@ async function loadEvents() {
   $("status").textContent = events.length ? "" : "No events match.";
   for (const e of events) {
     const fig = document.createElement("figure");
-    const media = e.clip ? `<video controls preload="none" poster="media/${e.snapshot}" src="media/${e.clip}"></video>`
+    const media = e.clip ? `<video controls playsinline preload="none" poster="media/${e.snapshot}" src="media/${e.clip}"></video>`
                          : `<img loading="lazy" src="media/${e.snapshot}" alt="snapshot">`;
+    const dl = (kind, text) => `<a class="chip" href="api/events/${e.id}/download/${kind}" download>${text}</a>`;
     const dur = e.end_ts ? `${Math.round(e.end_ts - e.start_ts)}s` : "ongoing";
     fig.innerHTML = `${media}
       <figcaption>
-        <span><b>${esc(e.camera)}</b> ${esc(e.label)}${e.speed != null ? ` <b>${Math.round(e.speed)} km/h</b>` : ""}${e.plate ? ` <code>${esc(e.plate)}</code>` : ""} <small>${fmt(e.start_ts)} · ${dur}</small>${e.crop ? ` <a href="media/${e.crop}" target="_blank">vehicle close-up</a>` : ""}</span>
+        <span><b>${esc(e.camera)}</b> ${esc(e.label)}${e.speed != null ? ` <b>${Math.round(e.speed)} km/h</b>` : ""}${e.plate ? ` <code>${esc(e.plate)}</code>` : ""} <small>${fmt(e.start_ts)} · ${dur}</small></span>
         <span class="score ${e.score >= 4 ? "high" : ""}" title="${esc(e.reasons.join(", "))}">score ${e.score}${e.notified ? " · notified" : ""}</span>
       </figcaption>
       <figcaption><small>${esc(e.reasons.join(" · "))}</small>
         <span><button class="chip" data-value="ok">Correct</button> <button class="chip" data-value="false_positive">False alarm</button></span>
+      </figcaption>
+      <figcaption class="downloads">
+        <span>${e.crop ? `<button class="chip" data-act="closeup" aria-pressed="false">Close-up</button>` : ""}</span>
+        <span>${dl("snapshot", "⤓ Picture")}${e.crop ? " " + dl("crop", "⤓ Close-up") : ""}${e.clip ? " " + dl("clip", "⤓ Video") : ""}</span>
       </figcaption>`;
+    // The close-up is shown in place of the picture: a new window loses the Home Assistant session.
+    const closeup = fig.querySelector('[data-act="closeup"]');
+    if (closeup) closeup.onclick = () => {
+      const on = closeup.getAttribute("aria-pressed") !== "true";
+      closeup.setAttribute("aria-pressed", on);
+      const el = fig.firstElementChild;
+      el.replaceWith(Object.assign(document.createElement("div"), {innerHTML: on
+        ? `<img src="media/${e.crop}" alt="vehicle close-up">` : media}).firstElementChild);
+    };
     for (const b of fig.querySelectorAll("[data-value]")) {
       b.setAttribute("aria-pressed", b.dataset.value === e.review);
       b.onclick = () => review(e.id, b.getAttribute("aria-pressed") === "true" ? null : b.dataset.value, fig);
@@ -250,7 +265,8 @@ async function loadEvents() {
 // --- settings ------------------------------------------------------------------------------------
 // The form edits a copy of the whole config file and sends all of it back, so settings without a
 // field here (ports, paths, ...) are kept as they are.
-let config = null, saved = false;
+let config = null, unsaved = false, status = {cls: "msg muted", text: ""};
+const openEditors = new Set();   // cameras whose zone editor is open, kept across re-renders
 
 const SECTIONS = [
   {title: "Alerts", desc: "When an event becomes a push notification. A confirmed person scores 1; away mode, night, loitering, door zones and a person on another camera just before add to it.", fields: [
@@ -409,10 +425,17 @@ function field(obj, [path, label, type, dflt, help, options, wide]) {
 }
 
 function dirty() {
-  saved = false;
-  $("save").disabled = false;
-  $("msg").className = "msg muted";
-  $("msg").textContent = "Unsaved changes";
+  unsaved = true;
+  setStatus("msg muted", "Unsaved changes");
+}
+
+function setStatus(cls, text) {
+  status = {cls, text};
+  $("msg").className = cls;
+  $("msg").textContent = text;
+  $("save").disabled = !unsaved;
+  $("restart").textContent = "Restart";
+  delete $("restart").dataset.confirm;
 }
 
 async function loadSettings() {
@@ -500,10 +523,19 @@ function renderSettings() {
 
   const bar = document.createElement("div");
   bar.className = "savebar";
-  bar.innerHTML = `<span class="msg muted" id="msg"></span><button class="btn" id="restart" ${saved ? "" : "disabled"}>Restart to apply</button><button class="btn filled" id="save" disabled>Save</button>`;
+  bar.innerHTML = `<span id="msg"></span><button class="btn" id="restart">Restart</button><button class="btn filled" id="save">Save</button>`;
   root.appendChild(bar);
   $("save").onclick = save;
-  $("restart").onclick = restart;
+  $("restart").onclick = () => {
+    const b = $("restart");
+    if (unsaved && b.dataset.confirm !== "1") {   // two clicks instead of a confirm() dialog
+      b.dataset.confirm = "1";
+      b.textContent = "Restart without saving?";
+      return;
+    }
+    restart();
+  };
+  setStatus(status.cls, status.text);
 }
 
 function cameraCard(name, cam) {
@@ -527,10 +559,13 @@ function cameraCard(name, cam) {
     delete config.cameras[name];
     dirty(); renderSettings();
   };
-  box.querySelector('[data-act="zones"]').onclick = () => {
-    editor.hidden = !editor.hidden;
-    if (!editor.hidden && !editor.firstChild) zoneEditor(editor, name, cam);
+  const toggle = open => {
+    editor.hidden = !open;
+    if (open) openEditors.add(name); else openEditors.delete(name);
+    if (open && !editor.firstChild) zoneEditor(editor, name, cam);
   };
+  box.querySelector('[data-act="zones"]').onclick = () => toggle(editor.hidden);
+  if (openEditors.has(name)) toggle(true);
   return box;
 }
 
@@ -639,6 +674,7 @@ function zoneEditor(root, name, cam) {
 }
 
 async function save() {
+  document.activeElement?.blur?.();   // commit a field still being edited
   $("save").disabled = true;
   const r = await fetch("api/config", json("PUT", config));
   const body = await r.json().catch(() => ({}));
@@ -648,11 +684,13 @@ async function save() {
     $("save").disabled = false;
     return;
   }
-  saved = true;
-  $("msg").className = "msg ok";
-  $("msg").textContent = body.changed ? "Saved. Restart to apply the changes." : "Nothing changed.";
-  $("restart").disabled = !body.changed;
-  config = await (await fetch("api/config")).json();   // masked secrets, as stored
+  unsaved = false;
+  status = {cls: "msg ok", text: body.changed ? "Saved. Restart to apply the changes." : "Nothing changed."};
+  // Rebuild the form on the stored config (masked secrets), so later edits change what is sent next.
+  config = await (await fetch("api/config")).json();
+  const y = scrollY;
+  renderSettings();
+  scrollTo(0, y);
 }
 
 async function restart() {
