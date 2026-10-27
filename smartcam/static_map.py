@@ -1,6 +1,7 @@
 """Per-camera memory of places where 'objects' sit without ever moving (lamps, tyres, a coat on a hook).
 
-When a track of an alert label ends without ever having moved, its location gets heat. Detections
+When a track of an alert label ends without ever having moved, its location gets heat, and so does
+an event marked as a false alarm (enough to make the spot hot at once). Detections
 in hot places need a higher score and real travel before they can raise an alert. Heat decays,
 so a place cools down again if nothing false shows up there.
 """
@@ -41,6 +42,7 @@ class StaticMap:
     def add(self, box: tuple, now: float, weight: float = 1.0) -> None:
         self._decay(now)
         self.heat[self._cells(box)] += weight
+        np.maximum(self.heat, 0, out=self.heat)
 
     def is_hot(self, box: tuple, now: float) -> bool:
         self._decay(now)

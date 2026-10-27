@@ -10,7 +10,7 @@ from .detect import Detection
 from .ingest import Frame
 from .motion import MotionDetector, MotionResult
 from .static_map import StaticMap
-from .tracker import Track, Tracker, TrackerConfig
+from .tracker import GROUPS, Track, Tracker, TrackerConfig, iou
 
 
 @dataclass
@@ -24,6 +24,7 @@ class PipelineConfig:
     quiet_scene: float = 0.3         # ...but every frame where motion is rare (under this share of frames over
     busy_window: float = 60.0        # about this many seconds), so a person coming into view is caught at once
     static_min_age: float = 10.0     # a never-moving track must last this long to heat the static map
+    animal_overlap: float = 0.3      # a person box overlapping an animal track with at least as many hits is the animal
     faded_after: float = 30.0        # a confirmed track standing still on only faint detections this long has lost
                                      # its person (it latched onto a coat on the wall as they walked past) and ends
 
@@ -91,7 +92,7 @@ class CameraPipeline:
         for t in tracks:
             if t.moving:
                 self.ever_moved.add(t.id)
-            if t.id not in self.confirmed_ids and self._confirm(t, frame.ts):
+            if t.id not in self.confirmed_ids and self._confirm(t, frame.ts, tracks):
                 self.confirmed_ids.add(t.id)
                 confirmed.append(t)
         for t in ended:
@@ -108,9 +109,13 @@ class CameraPipeline:
             return False
         return max(s for ts, _, s in t.history if ts >= now - self.cfg.faded_after) < self.cfg.confirm_score
 
-    def _confirm(self, t: Track, now: float) -> bool:
+    def _confirm(self, t: Track, now: float, tracks: list[Track]) -> bool:
         cfg = self.cfg
         if t.label not in cfg.alert_labels or t.hits < cfg.confirm_hits or not t.moving:
+            return False
+        # A cat walking in is "cat" or "dog" most frames and "person" in a few: the same box, two tracks.
+        if any(GROUPS.get(a.label) == "animal" and a.hits >= t.hits and iou(a.box, t.box) >= cfg.animal_overlap
+               for a in tracks):
             return False
         if self.static_map.is_hot(t.box, now):
             # Known false-positive spot: demand a confident detection that actually travels.

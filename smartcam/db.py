@@ -25,7 +25,7 @@ create index if not exists events_start on events (start_ts desc);
 create table if not exists settings (key text primary key, value text not null);
 """
 
-JSON_FIELDS = ("zones", "reasons")
+JSON_FIELDS = ("zones", "reasons", "box")
 
 
 class Database:
@@ -34,7 +34,7 @@ class Database:
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
-        for column, kind in (("speed", "real"), ("crop", "text"), ("plate", "text"), ("plate_conf", "real")):   # added later
+        for column, kind in (("speed", "real"), ("crop", "text"), ("plate", "text"), ("plate_conf", "real"), ("box", "text")):   # added later
             try:
                 self.conn.execute(f"alter table events add column {column} {kind}")
             except sqlite3.OperationalError:
@@ -46,7 +46,7 @@ class Database:
             return None
         d = dict(row)
         for f in JSON_FIELDS:
-            d[f] = json.loads(d[f])
+            d[f] = json.loads(d[f]) if d[f] is not None else None
         return d
 
     def insert_event(self, **fields) -> int:

@@ -114,6 +114,25 @@ def test_person_standing_still_stays_confirmed():
     assert [t for t in results[-1].tracks if t.id in p.confirmed_ids]
 
 
+def test_cat_seen_as_a_person_now_and_then_is_not_confirmed():
+    """The same box is "cat" most frames and "person" in a few: two tracks, and the person one must not alert."""
+    plan = []
+    for i in range(40):
+        box = (0.10 + i * 0.005, 0.85, 0.18 + i * 0.005, 1.0)
+        plan.append([Detection("cat", 0.8, box)] + ([Detection("person", 0.56, box)] if i >= 20 else []))
+    p = CameraPipeline(CAM, Scripted(plan))
+    p.motion = Moving()
+    assert run(p, 40) == []
+
+
+def test_person_with_a_cat_beside_them_is_confirmed():
+    plan = [[Detection("person", 0.8, (0.30 + i * 0.01, 0.2, 0.42 + i * 0.01, 0.9)),
+             Detection("cat", 0.8, (0.44 + i * 0.01, 0.8, 0.52 + i * 0.01, 0.95))] for i in range(10)]
+    p = CameraPipeline(CAM, Scripted(plan))
+    p.motion = Moving()
+    assert [t.label for t in run(p, 10)] == ["person"]
+
+
 def test_person_mask_drops_detections_with_feet_inside():
     cam = CAM.model_copy(update={"person_mask": [(0.0, 0.5), (1.0, 0.5), (1.0, 1.0), (0.0, 1.0)]})
     plan = [[Detection("person", 0.8, (0.1 + i * 0.03, 0.3, 0.18 + i * 0.03, 0.8))] for i in range(15)]

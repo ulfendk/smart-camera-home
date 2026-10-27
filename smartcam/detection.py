@@ -52,6 +52,7 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
                      watchdog: PowerWatchdog | None = None) -> None:
     static_map = StaticMap(cfg.paths.data / "static_map" / f"{cam.name}.npz")
     pipeline = CameraPipeline(cam, detector, static_map)
+    engine.static_maps[cam.name] = static_map
     slot: asyncio.Queue[Frame] = asyncio.Queue(maxsize=1)
     reader = asyncio.create_task(_latest(cfg, cam.name, slot))
     light = await make_light(cfg, cam)

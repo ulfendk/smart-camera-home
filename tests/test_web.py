@@ -78,3 +78,21 @@ def test_activity_lists_cameras_with_a_person_in_view():
 def test_wall_still_is_a_jpeg():
     r = client().get("/api/wall.jpg")
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content[:2] == b"\xff\xd8"
+
+
+def test_false_alarm_makes_its_spot_hot_and_taking_it_back_cools_it():
+    from smartcam.static_map import StaticMap
+    cfg = load_config(TEST_CONFIG)
+    cfg.paths.data = Path(tempfile.mkdtemp())
+    db = Database(cfg.paths.data / "t.db")
+    engine = EventEngine(cfg, db, RulesConfig())
+    engine.static_maps["front_door"] = sm = StaticMap()
+    c = TestClient(create_app(cfg, db, engine))
+    trunk = (0.62, 0.0, 0.81, 0.53)
+    ev = db.insert_event(camera="front_door", label="person", start_ts=1_700_000_000, max_score=0.6)
+    db.update_event(ev, box=list(trunk))
+    assert c.post(f"/api/events/{ev}/review", json={"review": "false_positive"}).json()["box"] == list(trunk)
+    assert sm.is_hot(trunk, 1_700_000_100)
+    c.post(f"/api/events/{ev}/review", json={"review": "false_positive"})   # again: no extra heat
+    c.post(f"/api/events/{ev}/review", json={"review": "ok"})
+    assert not sm.is_hot(trunk, 1_700_000_100)

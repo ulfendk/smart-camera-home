@@ -73,7 +73,8 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 - Web UI on port 8971: live view (and a wall view: every camera on one screen, outlining and enlarging the one that
   sees a person; open it directly at `/#wall`, or as one video put together by SmartCam at `/#wall-feed`, also
   as the RTSP stream `wall` for a TV or VLC and as `camera.smartcam_wall` in Home Assistant), events with snapshots and clips (filter by type, camera and time; download buttons), a Home/Away toggle, a
-  "false alarm" button on each event, and Settings: every option, zones and masks drawn on a live
+  "false alarm" button on each event (SmartCam remembers the spot: a "person" there then needs a confident
+  detection that really walks), and Settings: every option, zones and masks drawn on a live
   snapshot, and a restart to apply. Saving keeps the file's comments and `${VAR}` references, and
   literal passwords are never sent to the browser.
 - go2rtc on port 1984 restreams every camera as `<camera>` (main) and `<camera>_sub`.

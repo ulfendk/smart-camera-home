@@ -147,8 +147,9 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
     def review(event_id: int, body: Review) -> dict:
         if body.review not in (None, "ok", "false_positive"):
             raise HTTPException(400, "review must be ok, false_positive or null")
-        if db.event(event_id) is None:
+        if (event := db.event(event_id)) is None:
             raise HTTPException(404)
+        engine.learn_review(event, body.review)
         db.update_event(event_id, review=body.review)
         return db.event(event_id)
 

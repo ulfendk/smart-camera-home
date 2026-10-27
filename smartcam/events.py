@@ -22,6 +22,7 @@ from .speed import VEHICLES, SpeedConfig
 from .config import Config
 from .db import Database
 from .pipeline import FrameResult
+from .static_map import StaticMap
 from .tracker import Track, iou
 
 log = logging.getLogger(__name__)
@@ -123,6 +124,7 @@ class EventEngine:
         self.detector = None                 # set by detection; finds the vehicle in the recording
         self.people_seen: dict[str, float] = {}   # camera -> last time a confirmed person was in view (live view)
         self.people_boxes: dict[str, tuple] = {}  # camera -> (ts, boxes of people in view), for the wall feed
+        self.static_maps: dict[str, StaticMap] = {}   # camera -> its static map, set by detection
         self.live_frames: dict[str, tuple] = {}   # camera -> (ts, newest image), for the wall feed
         self.on_occupancy: list[Callable[[str, bool], Awaitable[None]]] = []   # (camera, occupied)
         self.snapshots = cfg.paths.data / "snapshots"
@@ -184,6 +186,16 @@ class EventEngine:
                     task = asyncio.create_task(self._finalise(ev, t.last_ts))
                     self._tasks.add(task)
                     task.add_done_callback(self._tasks.discard)
+
+    def learn_review(self, event: dict, review: str | None) -> None:
+        """A false alarm makes its spot hot in the camera's static map, so the same thing there needs a
+        confident detection that really travels next time. Taking the mark back cools the spot again."""
+        sm = self.static_maps.get(event["camera"])
+        was, now = event["review"] == "false_positive", review == "false_positive"
+        if sm is None or not event.get("box") or event["label"] != "person" or was == now:
+            return
+        sm.add(tuple(event["box"]), time.time(), sm.hot_threshold if now else -sm.hot_threshold)
+        sm.save()
 
     def _continue(self, camera: str, t: Track, now: float) -> OpenEvent | None:
         """Attach a newly confirmed track to the camera's ongoing or just-ended event, if any.
@@ -253,7 +265,7 @@ class EventEngine:
         path = self.snapshots / f"{ev.id}.jpg"
         path.parent.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(path), img, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        self.db.update_event(ev.id, snapshot=str(path.relative_to(self.cfg.paths.data)))
+        self.db.update_event(ev.id, snapshot=str(path.relative_to(self.cfg.paths.data)), box=list(t.box))
 
     async def _finalise(self, ev: OpenEvent, closed_at: float) -> None:
         """Close the event for good unless a new track continued it within merge_gap."""
