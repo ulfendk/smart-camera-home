@@ -229,6 +229,7 @@ async function loadLive() {
       <figcaption><a href="${GO2RTC}/stream.html?src=${encodeURIComponent(c.name)}" target="_blank">${esc(c.name)}</a><small>${esc(c.location)}</small></figcaption>
       <div class="hit" hidden></div>`;
     fig.dataset.camera = c.name;
+    fig.querySelector("iframe").onload = e => bare(e.target);
     fig.querySelector(".hit").onclick = () => { picked = picked === c.name ? null : c.name; layoutWall(); };
     $("live").appendChild(fig);
   }
@@ -243,6 +244,17 @@ const store = {
   get: k => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
 };
+
+// The player is served from this origin, so the wall can strip its label and controls: just the picture.
+const BARE_CSS = ".info { display: none !important; } video::-webkit-media-controls { display: none !important; }";
+function bare(iframe) {
+  try {
+    const doc = iframe.contentDocument;
+    let style = doc.getElementById("wall-bare");
+    if (!style) doc.head.appendChild(style = Object.assign(doc.createElement("style"), {id: "wall-bare"}));
+    style.textContent = document.body.classList.contains("wall") ? BARE_CSS : "";
+  } catch {}
+}
 
 function layoutWall() {
   if (!document.body.classList.contains("wall")) return;
@@ -287,6 +299,7 @@ function openWall() {
   document.body.classList.add("wall");
   $("wall-bar").hidden = false;
   for (const h of document.querySelectorAll("#live .hit")) h.hidden = false;
+  for (const f of document.querySelectorAll("#live iframe")) bare(f);
   $("wall-follow").setAttribute("aria-pressed", store.get("wall-follow") !== "0");
   if (location.hash !== "#wall") history.replaceState(null, "", "#wall");   // bookmarkable
   // Show the controls for a few seconds, then only on hover.
@@ -301,6 +314,7 @@ function closeWall() {
   $("wall-bar").hidden = true;
   for (const h of document.querySelectorAll("#live .hit")) h.hidden = true;
   for (const f of $("live").children) f.classList.remove("person", "featured");
+  for (const f of document.querySelectorAll("#live iframe")) bare(f);
   clearInterval(wallTimer);
   wakeLock?.release().catch(() => {}); wakeLock = null;
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
