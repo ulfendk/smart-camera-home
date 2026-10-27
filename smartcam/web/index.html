@@ -740,6 +740,12 @@ const normalise = v => isFlat(v) ? toPoints(v) : (v || []).map(p => [p[0], p[1]]
 const LAYER_COLORS = {person_mask: "#db4437", motion_mask: "#ff9800", speed_a: "#43a047", speed_b: "#8e24aa"};
 const LINES = ["speed_a", "speed_b"];   // two-point lines, not polygons
 const LAYER_NAMES = {person_mask: "Person mask", motion_mask: "Motion mask", speed_a: "Speed line A", speed_b: "Speed line B"};
+const LAYER_HINTS = {
+  person_mask: "Person mask: a person whose feet (bottom middle of the box) are inside it is ignored. Cover spots that fool the detector, like coats on a hook, not the area you want watched.",
+  motion_mask: "Motion mask: movement inside it is ignored, such as trees, a TV or the camera's clock.",
+  speed_a: "Speed lines: two clicks each, across the road where the wheels touch it.",
+  speed_b: "Speed lines: two clicks each, across the road where the wheels touch it.",
+};
 
 function zoneEditor(root, name, cam) {
   const layers = {};
@@ -757,8 +763,9 @@ function zoneEditor(root, name, cam) {
       <input placeholder="new zone name"><button class="chip" data-act="add">Add zone</button>
       <button class="chip" data-act="undo">Undo point</button><button class="chip" data-act="clear">Clear</button>
       <button class="chip" data-act="delete">Delete zone</button><button class="chip" data-act="refresh">New snapshot</button>
-      <small class="muted">Click to add points, drag to move them. Speed lines: two clicks each, across the road where the wheels touch it.</small>
-    </div>`;
+      <small class="muted">Click to add points, drag to move them.</small>
+    </div>
+    <p class="muted layer-hint"></p>`;
   const canvas = root.querySelector("canvas"), img = root.querySelector("img"), ctx = canvas.getContext("2d");
   const chips = root.querySelector(".layers");
 
@@ -785,6 +792,8 @@ function zoneEditor(root, name, cam) {
     }).join("");
     for (const b of chips.querySelectorAll("[data-layer]")) b.onclick = () => { active = b.dataset.layer; renderChips(); draw(); };
     root.querySelector('[data-act="delete"]').disabled = !active?.startsWith("zone:");
+    root.querySelector(".layer-hint").textContent = active?.startsWith("zone:")
+      ? "Zone: events note the zones a person was in, and alarm rules can use them (door zones)." : LAYER_HINTS[active] || "";
   }
 
   function draw() {
