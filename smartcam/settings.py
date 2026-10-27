@@ -117,6 +117,7 @@ class Settings:
         from .ha.person_lights import PersonLightsConfig
         from .ha.doorbell import DoorbellConfig
         from .speed import SpeedConfig
+        from .wallfeed import WallConfig
 
         with tempfile.NamedTemporaryFile("w", suffix=".yml", dir=self.path.parent, delete=False) as f:
             f.write(text)
@@ -129,6 +130,7 @@ class Settings:
             PresenceConfig(**cfg.presence)
             PersonLightsConfig(**cfg.person_lights)
             DoorbellConfig(**cfg.doorbell)
+            WallConfig(**cfg.wall)
             for cam in cfg.cameras.values():
                 SpeedConfig(**(cam.speed or {}))
         except Exception as e:

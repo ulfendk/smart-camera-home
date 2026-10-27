@@ -117,3 +117,8 @@ go2rtc:
 
 web:
   port: 8971
+
+wall:                   # every camera as one video (go2rtc stream "wall"), encoded only while watched
+  enabled: true
+  width: 1920
+  bitrate: 4M

@@ -129,6 +129,9 @@
   #wall-bar:hover, body.wall.awake #wall-bar { opacity: 1; }
   #wall-bar .chip { color: #fff; border-color: rgba(255,255,255,.35); }
   #wall-bar .chip[aria-pressed="true"] { color: #fff; background: var(--primary); border-color: var(--primary); }
+  #wall-feed { position: fixed; inset: 0; z-index: 4; background: #000; }
+  #wall-feed[hidden] { display: none; }
+  #wall-feed iframe { width: 100%; height: 100%; border: 0; display: block; }
   #wall-clock { font-variant-numeric: tabular-nums; padding: 0 6px; }
   .overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0,0,0,.45); color: #fff; font-size: 18px; }
 </style>
@@ -148,8 +151,10 @@
 <main>
   <div class="live-bar" id="live-bar"><button class="btn" id="wall-open" title="All cameras on one screen, for keeping an eye on things">Wall view</button></div>
   <section id="live" class="grid"></section>
+  <div id="wall-feed" hidden></div>
   <div id="wall-bar" hidden>
     <span id="wall-clock"></span><span id="wall-alarm"></span>
+    <button class="chip" id="wall-one" aria-pressed="false" title="All cameras as one video, put together by SmartCam: lighter for a TV, an old tablet or mobile data">One feed</button>
     <button class="chip" id="wall-follow" aria-pressed="true" title="Enlarge a camera while it sees a person">Follow people</button>
     <button class="chip" id="wall-full">Full screen</button>
     <button class="chip" id="wall-close">Close</button>
@@ -233,7 +238,7 @@ async function loadLive() {
     fig.querySelector(".hit").onclick = () => { picked = picked === c.name ? null : c.name; layoutWall(); };
     $("live").appendChild(fig);
   }
-  if (location.hash === "#wall") openWall();
+  if (location.hash === "#wall" || location.hash === "#wall-feed") openWall();
 }
 
 // --- wall view -----------------------------------------------------------------------------------
@@ -294,6 +299,22 @@ async function keepAwake() {
   try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {}   // needs https; best effort
 }
 
+// One feed: a single video composed on the server (go2rtc's "wall" stream). The separate players are
+// stopped meanwhile, so a weak device really only decodes one stream.
+function setOneFeed(on) {
+  $("wall-one").setAttribute("aria-pressed", on);
+  $("wall-follow").hidden = on;
+  for (const f of document.querySelectorAll("#live iframe")) {
+    if (on && f.src !== "about:blank") { f.dataset.src = f.src; f.src = "about:blank"; }
+    if (!on && f.dataset.src) { f.src = f.dataset.src; delete f.dataset.src; }
+  }
+  $("wall-feed").hidden = !on;
+  $("wall-feed").innerHTML = on ? `<iframe allow="autoplay" src="${GO2RTC}/stream.html?src=wall&mode=webrtc,mse"></iframe>` : "";
+  const feed = $("wall-feed").querySelector("iframe");
+  if (feed) feed.onload = () => bare(feed);
+  history.replaceState(null, "", on ? "#wall-feed" : "#wall");
+}
+
 function openWall() {
   showTab("live");
   document.body.classList.add("wall");
@@ -301,7 +322,8 @@ function openWall() {
   for (const h of document.querySelectorAll("#live .hit")) h.hidden = false;
   for (const f of document.querySelectorAll("#live iframe")) bare(f);
   $("wall-follow").setAttribute("aria-pressed", store.get("wall-follow") !== "0");
-  if (location.hash !== "#wall") history.replaceState(null, "", "#wall");   // bookmarkable
+  const one = location.hash === "#wall-feed" || store.get("wall-one") === "1";
+  if (one) setOneFeed(true); else history.replaceState(null, "", "#wall");   // bookmarkable
   // Show the controls for a few seconds, then only on hover.
   document.body.classList.add("awake");
   setTimeout(() => document.body.classList.remove("awake"), 4000);
@@ -310,6 +332,7 @@ function openWall() {
 }
 
 function closeWall() {
+  if ($("wall-one").getAttribute("aria-pressed") === "true") setOneFeed(false);
   document.body.classList.remove("wall");
   $("wall-bar").hidden = true;
   for (const h of document.querySelectorAll("#live .hit")) h.hidden = true;
@@ -323,6 +346,11 @@ function closeWall() {
 
 $("wall-open").onclick = openWall;
 $("wall-close").onclick = closeWall;
+$("wall-one").onclick = () => {
+  const on = $("wall-one").getAttribute("aria-pressed") !== "true";
+  store.set("wall-one", on ? "1" : "0");
+  setOneFeed(on);
+};
 $("wall-full").onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {});
 $("wall-follow").onclick = () => {
   const on = $("wall-follow").getAttribute("aria-pressed") !== "true";

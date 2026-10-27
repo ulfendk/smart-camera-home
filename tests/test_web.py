@@ -73,3 +73,8 @@ def test_activity_lists_cameras_with_a_person_in_view():
     assert c.get("/api/activity").json() == {"people": []}
     engine.people_seen.update(front_door=time.time(), driveway=time.time() - 60)
     assert c.get("/api/activity").json() == {"people": ["front_door"]}
+
+
+def test_wall_still_is_a_jpeg():
+    r = client().get("/api/wall.jpg")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content[:2] == b"\xff\xd8"

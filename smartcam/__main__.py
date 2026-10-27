@@ -13,6 +13,7 @@ from .config import load_config
 from .db import Database
 from .alarm import Alarm, AlarmConfig
 from .events import EventEngine, RulesConfig
+from .wallfeed import WallConfig, WallFeed
 from .web import create_app
 
 
@@ -81,6 +82,8 @@ async def main() -> None:
                 tg.create_task(alarm.morning_clock())
             if doorbell is not None:
                 tg.create_task(doorbell.run())
+            if WallConfig(**cfg.wall).enabled:
+                tg.create_task(WallFeed(cfg, engine).run())
             tg.create_task(_restart_on(restart))
     finally:
         if alarm is not None:

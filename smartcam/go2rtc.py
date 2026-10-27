@@ -8,6 +8,7 @@ import yaml
 
 from .config import Config
 from .supervise import supervise
+from .wallfeed import WallConfig, encoder_source
 
 
 def go2rtc_config(cfg: Config) -> dict:
@@ -17,6 +18,8 @@ def go2rtc_config(cfg: Config) -> dict:
         # detect == record: feed detection from the main restream, so the camera keeps one connection
         # (some cameras cannot serve two streams reliably). Detection scales the frames down anyway.
         streams[f"{name}_sub"] = [cfg.go2rtc.restream(name) if cam.detect == cam.record else cam.detect]
+    if WallConfig(**cfg.wall).enabled:
+        streams["wall"] = [encoder_source(cfg)]   # every camera in one feed, encoded only while watched
     g = cfg.go2rtc
     rtsp = {"listen": f"{'' if g.rtsp_lan else '127.0.0.1'}:{g.rtsp_port}"}
     if g.rtsp_password:

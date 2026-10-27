@@ -13,6 +13,7 @@ import httpx
 import websockets
 
 from ..config import Config
+from ..wallfeed import WallConfig
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +21,8 @@ log = logging.getLogger(__name__)
 def camera_urls(cfg: Config, name: str) -> tuple[str, str]:
     host = cfg.ha.smartcam_host
     stream = cfg.go2rtc.restream(name, host=host)
-    still = f"http://{host}:{cfg.web.port}/go2rtc/api/frame.jpeg?src={name}_sub"
+    still = (f"http://{host}:{cfg.web.port}/api/wall.jpg" if name == "wall"   # the feed without starting its encoder
+             else f"http://{host}:{cfg.web.port}/go2rtc/api/frame.jpeg?src={name}_sub")
     return stream, still
 
 
@@ -84,7 +86,7 @@ class HaCameras:
             raise ValueError("needs go2rtc.rtsp_lan: true and ha.smartcam_host (the address Home Assistant reaches SmartCam on)")
         have = await self.existing()
         out = {}
-        for name in self.cfg.cameras:
+        for name in [*self.cfg.cameras, *(["wall"] if WallConfig(**self.cfg.wall).enabled else [])]:
             if f"SmartCam {name}" in have:
                 out[name] = "exists"
                 continue

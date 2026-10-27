@@ -112,6 +112,14 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
     def cameras() -> list[dict]:
         return [{"name": c.name, "location": c.location, "zones": list(c.zones)} for c in cfg.cameras.values()]
 
+    @app.get("/api/wall.jpg")
+    def wall_jpg() -> Response:
+        """The wall feed as a still (Home Assistant's camera picture), without starting the encoder."""
+        import cv2
+        from ..wallfeed import WallFeed
+        ok, jpg = cv2.imencode(".jpg", WallFeed(cfg, engine).frame(), [cv2.IMWRITE_JPEG_QUALITY, 80])
+        return Response(jpg.tobytes(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
     @app.get("/api/activity")
     def activity() -> dict:
         """Cameras with a person in view in the last few seconds, for the wall view."""

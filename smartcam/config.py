@@ -142,6 +142,7 @@ class Config(BaseModel):
     person_lights: dict = {}  # validated by ha.person_lights.PersonLightsConfig
     timesync: dict = {}  # validated by timesync.TimeSyncConfig
     doorbell: dict = {}  # validated by ha.doorbell.DoorbellConfig
+    wall: dict = {}  # validated by wallfeed.WallConfig
     path: Path | None = None  # the file this was loaded from (the settings UI writes it)
 
 

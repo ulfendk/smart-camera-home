@@ -82,8 +82,10 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
                         or (t.hits >= 3 and t.max_score >= 0.6 and not static_map.is_hot(t.box, frame.ts)))
                    for t in res.tracks):
                 last_person = frame.ts
-            if any(t.id in pipeline.confirmed_ids and t.last_ts == frame.ts for t in res.tracks):
+            engine.live_frames[cam.name] = (frame.ts, frame.image)
+            if people := [t.box for t in res.tracks if t.id in pipeline.confirmed_ids and t.last_ts == frame.ts]:
                 engine.people_seen[cam.name] = frame.ts   # for the wall view; privacy only limits recording
+                engine.people_boxes[cam.name] = (frame.ts, people)
             now_occupied = frame.ts - last_person < OCCUPANCY_HOLD
             if now_occupied != occupied:
                 occupied = now_occupied

@@ -122,6 +122,8 @@ class EventEngine:
         self.on_speed: list[Notifier] = []   # a vehicle speed event, once its best shot is in
         self.detector = None                 # set by detection; finds the vehicle in the recording
         self.people_seen: dict[str, float] = {}   # camera -> last time a confirmed person was in view (live view)
+        self.people_boxes: dict[str, tuple] = {}  # camera -> (ts, boxes of people in view), for the wall feed
+        self.live_frames: dict[str, tuple] = {}   # camera -> (ts, newest image), for the wall feed
         self.on_occupancy: list[Callable[[str, bool], Awaitable[None]]] = []   # (camera, occupied)
         self.snapshots = cfg.paths.data / "snapshots"
         self.clips = cfg.paths.data / "clips"
