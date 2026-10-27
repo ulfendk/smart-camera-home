@@ -176,6 +176,11 @@ smartcam_proxy/    Home Assistant add-on: the UI in the sidebar through ingress
 - Licence plates for vehicles arriving on a driveway camera, where the plate faces the camera (speed
   cameras usually see cars from the side)
 
+## Support
+
+SmartCam is free and MIT licensed. If it's useful to you, you can support it through
+[GitHub Sponsors](https://github.com/sponsors/ulfendk) or [Buy Me a Coffee](https://buymeacoffee.com/ulfendk).
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Not affiliated with Frigate or Home Assistant.

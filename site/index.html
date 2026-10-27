@@ -142,6 +142,8 @@
   .credit .ico { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
   .credit p { margin: 0; color: var(--muted); }
   .credit h3 { margin: 0 0 4px; font-size: 18px; font-weight: 500; }
+  .support { margin-top: 16px; }
+  .credit .support-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .thanks { margin-top: 16px; color: var(--muted); font-size: 14px; }
 
   footer { border-top: 1px solid var(--divider); padding: 24px 0 40px; color: var(--muted); font-size: 14px; }
@@ -335,6 +337,17 @@
         <p>SmartCam exists because <a href="https://frigate.video">Frigate</a> showed what a local, private NVR for Home Assistant can be. It borrows Frigate's best ideas: go2rtc restreaming, continuous recording with events on top, zones and masks in normalised coordinates, and MQTT entities. If you need face recognition, a mature UI or a large community, use Frigate. SmartCam is a smaller project with a narrower aim: fewer false alarms.</p>
       </div>
     </div>
+    <div class="card credit support">
+      <div class="ico"><span class="mdi mdi-coffee-outline"></span></div>
+      <div>
+        <h3>Support SmartCam</h3>
+        <p>SmartCam is free and MIT licensed, built in spare evenings. If it keeps an eye on your home, you can say thanks.</p>
+        <p class="support-links">
+          <a class="btn filled" href="https://github.com/sponsors/ulfendk"><span class="mdi mdi-heart-outline"></span>Sponsor on GitHub</a>
+          <a class="btn outlined" href="https://buymeacoffee.com/ulfendk"><span class="mdi mdi-coffee-outline"></span>Buy me a coffee</a>
+        </p>
+      </div>
+    </div>
     <p class="thanks">Also built on <a href="https://github.com/AlexxIT/go2rtc">go2rtc</a>, <a href="https://docs.ultralytics.com">Ultralytics YOLO11</a>, <a href="https://onnxruntime.ai">ONNX Runtime</a>, <a href="https://ffmpeg.org">FFmpeg</a> and <a href="https://pictogrammers.com/library/mdi/">Material Design Icons</a>.</p>
   </div>
 </section>
@@ -342,7 +355,7 @@
 
 <footer>
   <div class="wrap">
-    <span>SmartCam · MIT licensed · <a href="https://github.com/ulfendk/smart-camera-home">GitHub</a></span>
+    <span>SmartCam · MIT licensed · <a href="https://github.com/ulfendk/smart-camera-home">GitHub</a> · <a href="https://github.com/sponsors/ulfendk">Sponsor</a> · <a href="https://buymeacoffee.com/ulfendk">Buy me a coffee</a></span>
     <span>Not affiliated with Home Assistant, Nabu Casa or Frigate.</span>
   </div>
 </footer>
