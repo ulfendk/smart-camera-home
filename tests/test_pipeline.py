@@ -86,6 +86,34 @@ def test_faint_static_track_does_not_heat_map():
     assert not sm.is_hot(LAMP, 40)
 
 
+COAT = (0.0, 0.0, 0.2, 0.99)
+
+
+def walk_to(box, score, n):
+    """A person walking in from the right to `box`, then only `score`-strong detections there for n frames."""
+    walk = [[Detection("person", 0.8, (box[0] + 0.05 * (10 - i), box[1], box[2] + 0.05 * (10 - i), box[3]))]
+            for i in range(11)]
+    return walk + [[Detection("person", score, box)] for _ in range(n)]
+
+
+def test_confirmed_track_left_on_a_coat_ends():
+    """A person walks past the coats; the track latches onto them on faint detections and must let go."""
+    p = CameraPipeline(CAM, Scripted(walk_to(COAT, 0.35, 400)))
+    p.cfg.detect_refresh = 0
+    results = [p.process(frame(i / 5)) for i in range(411)]
+    assert any(r.confirmed for r in results)
+    assert any(r.ended for r in results)
+    assert not [t for t in results[-1].tracks if t.id in p.confirmed_ids]
+
+
+def test_person_standing_still_stays_confirmed():
+    p = CameraPipeline(CAM, Scripted(walk_to(COAT, 0.8, 400)))
+    p.cfg.detect_refresh = 0
+    results = [p.process(frame(i / 5)) for i in range(411)]
+    assert not any(r.ended for r in results)
+    assert [t for t in results[-1].tracks if t.id in p.confirmed_ids]
+
+
 def test_person_mask_drops_detections_with_feet_inside():
     cam = CAM.model_copy(update={"person_mask": [(0.0, 0.5), (1.0, 0.5), (1.0, 1.0), (0.0, 1.0)]})
     plan = [[Detection("person", 0.8, (0.1 + i * 0.03, 0.3, 0.18 + i * 0.03, 0.8))] for i in range(15)]

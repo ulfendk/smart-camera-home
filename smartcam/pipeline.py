@@ -24,6 +24,8 @@ class PipelineConfig:
     quiet_scene: float = 0.3         # ...but every frame where motion is rare (under this share of frames over
     busy_window: float = 60.0        # about this many seconds), so a person coming into view is caught at once
     static_min_age: float = 10.0     # a never-moving track must last this long to heat the static map
+    faded_after: float = 30.0        # a confirmed track standing still on only faint detections this long has lost
+                                     # its person (it latched onto a coat on the wall as they walked past) and ends
 
 
 @dataclass
@@ -80,6 +82,10 @@ class CameraPipeline:
         self.last_detect = frame.ts
         dets = self._filter(self.detector.detect(frame.image))
         tracks, ended = self.tracker.update(frame.ts, dets, motion)
+        for t in tracks:
+            if t.id in self.confirmed_ids and self._faded(t, frame.ts):
+                ended.append(self.tracker.tracks.pop(t.id))
+        tracks = list(self.tracker.tracks.values())
 
         confirmed = []
         for t in tracks:
@@ -96,6 +102,11 @@ class CameraPipeline:
             self.confirmed_ids.discard(t.id)
             self.ever_moved.discard(t.id)
         return FrameResult(frame, motion, dets, tracks, confirmed, ended)
+
+    def _faded(self, t: Track, now: float) -> bool:
+        if not t.stationary or now - t.first_ts < self.cfg.faded_after:
+            return False
+        return max(s for ts, _, s in t.history if ts >= now - self.cfg.faded_after) < self.cfg.confirm_score
 
     def _confirm(self, t: Track, now: float) -> bool:
         cfg = self.cfg
