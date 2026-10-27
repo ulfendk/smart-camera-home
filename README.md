@@ -70,7 +70,8 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 
 ## Using it
 
-- Web UI on port 8971: live view, events with snapshots and clips (filter by type, camera and time; download buttons), a Home/Away toggle, a
+- Web UI on port 8971: live view (and a wall view: every camera on one screen, outlining and enlarging the one that
+  sees a person; open it directly at `/#wall`), events with snapshots and clips (filter by type, camera and time; download buttons), a Home/Away toggle, a
   "false alarm" button on each event, and Settings: every option, zones and masks drawn on a live
   snapshot, and a restart to apply. Saving keeps the file's comments and `${VAR}` references, and
   literal passwords are never sent to the browser.

@@ -106,6 +106,30 @@
   .layers { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0; }
   .layers input { font: inherit; padding: 4px 10px; border-radius: 16px; border: 1px solid var(--line); background: var(--field); color: var(--fg); width: 140px; }
   .legend { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  /* Wall view: every camera on one screen, nothing else, for keeping an eye on things from a desk. */
+  .live-bar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+  .live-bar[hidden], #wall-bar[hidden] { display: none; }
+  body.wall { background: #000; overflow: hidden; }
+  body.wall header, body.wall .live-bar, body.wall #status { display: none; }
+  body.wall main { padding: 0; max-width: none; }
+  body.wall #live { position: fixed; inset: 0; gap: 4px; padding: 4px; align-content: center; justify-content: center;
+                    grid-template-columns: repeat(var(--cols), var(--tile-w)); grid-auto-rows: var(--tile-h); grid-auto-flow: dense; }
+  body.wall #live figure { position: relative; border-radius: 4px; box-shadow: none; background: #000; outline: 3px solid transparent; outline-offset: -3px; }
+  body.wall #live figure.featured { grid-column: span 2; grid-row: span 2; }
+  body.wall #live iframe { width: 100%; height: 100%; aspect-ratio: auto; }
+  body.wall #live figcaption { position: absolute; left: 8px; bottom: 8px; padding: 2px 8px; border-radius: 4px; background: rgba(0,0,0,.55); color: #fff; font-size: 13px; }
+  body.wall #live figcaption a { color: #fff; text-decoration: none; }
+  body.wall #live figcaption small { display: none; }
+  body.wall #live .hit { position: absolute; inset: 0; cursor: zoom-in; }   /* over the player: a click picks the tile */
+  body.wall #live figure.person { outline-color: var(--error); }
+  body.wall #live figure.person figcaption { background: var(--error); }
+  body.wall #live figure.person figcaption::after { content: " · person"; }
+  #wall-bar { position: fixed; top: 8px; right: 8px; z-index: 6; display: flex; gap: 6px; align-items: center; padding: 4px 6px;
+              border-radius: 18px; background: rgba(0,0,0,.55); color: #fff; opacity: 0; transition: opacity .3s; }
+  #wall-bar:hover, body.wall.awake #wall-bar { opacity: 1; }
+  #wall-bar .chip { color: #fff; border-color: rgba(255,255,255,.35); }
+  #wall-bar .chip[aria-pressed="true"] { color: #fff; background: var(--primary); border-color: var(--primary); }
+  #wall-clock { font-variant-numeric: tabular-nums; padding: 0 6px; }
   .overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0,0,0,.45); color: #fff; font-size: 18px; }
 </style>
 </head>
@@ -122,7 +146,14 @@
     <span class="arm-menu" id="arm-menu" hidden><button class="chip" data-cmd="arm_away">Arm away</button><button class="chip" data-cmd="arm_home">Arm home</button></span></span>
 </header>
 <main>
+  <div class="live-bar" id="live-bar"><button class="btn" id="wall-open" title="All cameras on one screen, for keeping an eye on things">Wall view</button></div>
   <section id="live" class="grid"></section>
+  <div id="wall-bar" hidden>
+    <span id="wall-clock"></span><span id="wall-alarm"></span>
+    <button class="chip" id="wall-follow" aria-pressed="true" title="Enlarge a camera while it sees a person">Follow people</button>
+    <button class="chip" id="wall-full">Full screen</button>
+    <button class="chip" id="wall-close">Close</button>
+  </div>
   <div id="event-filters" class="filters" hidden>
     <select id="f-kind"><option value="">All events</option><option value="person">People</option><option value="vehicle">Vehicles</option><option value="doorbell">Doorbell</option><option value="notified">Notified only</option></select>
     <select id="f-camera"><option value="">All cameras</option></select>
@@ -144,6 +175,7 @@ const json = (method, body) => ({method, headers: {"Content-Type": "application/
 function showTab(name) {
   for (const t of ["live", "events", "settings"]) {
     $(t).hidden = t !== name;
+    if (t === "live") $("live-bar").hidden = t !== name;
     $("tab-" + t).setAttribute("aria-pressed", t === name);
   }
   $("event-filters").hidden = name !== "events";
@@ -194,10 +226,99 @@ async function loadLive() {
     const fig = document.createElement("figure");
     // Sub-streams are light enough to show all cameras at once; the name opens the main stream.
     fig.innerHTML = `<iframe loading="lazy" allow="autoplay" src="${GO2RTC}/stream.html?src=${encodeURIComponent(c.name)}_sub&mode=webrtc,mse"></iframe>
-      <figcaption><a href="${GO2RTC}/stream.html?src=${encodeURIComponent(c.name)}" target="_blank">${esc(c.name)}</a><small>${esc(c.location)}</small></figcaption>`;
+      <figcaption><a href="${GO2RTC}/stream.html?src=${encodeURIComponent(c.name)}" target="_blank">${esc(c.name)}</a><small>${esc(c.location)}</small></figcaption>
+      <div class="hit" hidden></div>`;
+    fig.dataset.camera = c.name;
+    fig.querySelector(".hit").onclick = () => { picked = picked === c.name ? null : c.name; layoutWall(); };
     $("live").appendChild(fig);
   }
+  if (location.hash === "#wall") openWall();
 }
+
+// --- wall view -----------------------------------------------------------------------------------
+// All cameras sized to fill the window without scrolling. A camera with a person in view is outlined
+// red and, with "Follow people", shown at double size; a click on a tile enlarges it until clicked again.
+let picked = null, people = [], wakeLock = null, wallTimer = null;
+const store = {
+  get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+};
+
+function layoutWall() {
+  if (!document.body.classList.contains("wall")) return;
+  const figs = [...$("live").children];
+  const follow = $("wall-follow").getAttribute("aria-pressed") === "true";
+  const featured = picked ?? (follow ? people.find(c => figs.some(f => f.dataset.camera === c)) : null) ?? null;
+  for (const f of figs) {
+    f.classList.toggle("person", people.includes(f.dataset.camera));
+    f.classList.toggle("featured", f.dataset.camera === featured);
+  }
+  // Pick the column count that gives the largest 16:9 tiles; a featured tile takes 2x2 cells.
+  const W = innerWidth - 8, H = innerHeight - 8, gap = 4, cells = figs.length + (featured ? 3 : 0);
+  let best = {w: 0};
+  for (let cols = featured ? 2 : 1; cols <= cells; cols++) {
+    const rows = Math.ceil(cells / cols);
+    const w = Math.min((W - gap * (cols - 1)) / cols, ((H - gap * (rows - 1)) / rows) * 16 / 9);
+    if (w > best.w) best = {w, cols};
+  }
+  const live = $("live").style;
+  live.setProperty("--cols", best.cols);
+  live.setProperty("--tile-w", `${Math.floor(best.w)}px`);
+  live.setProperty("--tile-h", `${Math.floor(best.w * 9 / 16)}px`);
+}
+
+async function pollWall() {
+  try { people = (await (await fetch("api/activity")).json()).people; } catch { people = []; }
+  const alarm = $("alarm");
+  $("wall-alarm").textContent = alarm.hidden ? "" : alarm.textContent;
+  layoutWall();
+}
+
+function tickClock() {
+  $("wall-clock").textContent = new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+}
+
+async function keepAwake() {
+  try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {}   // needs https; best effort
+}
+
+function openWall() {
+  showTab("live");
+  document.body.classList.add("wall");
+  $("wall-bar").hidden = false;
+  for (const h of document.querySelectorAll("#live .hit")) h.hidden = false;
+  $("wall-follow").setAttribute("aria-pressed", store.get("wall-follow") !== "0");
+  if (location.hash !== "#wall") history.replaceState(null, "", "#wall");   // bookmarkable
+  // Show the controls for a few seconds, then only on hover.
+  document.body.classList.add("awake");
+  setTimeout(() => document.body.classList.remove("awake"), 4000);
+  tickClock(); pollWall(); keepAwake();
+  wallTimer = setInterval(() => { tickClock(); pollWall(); }, 1500);
+}
+
+function closeWall() {
+  document.body.classList.remove("wall");
+  $("wall-bar").hidden = true;
+  for (const h of document.querySelectorAll("#live .hit")) h.hidden = true;
+  for (const f of $("live").children) f.classList.remove("person", "featured");
+  clearInterval(wallTimer);
+  wakeLock?.release().catch(() => {}); wakeLock = null;
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
+$("wall-open").onclick = openWall;
+$("wall-close").onclick = closeWall;
+$("wall-full").onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {});
+$("wall-follow").onclick = () => {
+  const on = $("wall-follow").getAttribute("aria-pressed") !== "true";
+  $("wall-follow").setAttribute("aria-pressed", on);
+  store.set("wall-follow", on ? "1" : "0");
+  layoutWall();
+};
+addEventListener("resize", layoutWall);
+addEventListener("keydown", e => { if (e.key === "Escape" && document.body.classList.contains("wall") && !document.fullscreenElement) closeWall(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && document.body.classList.contains("wall")) keepAwake(); });
 
 // --- events --------------------------------------------------------------------------------------
 async function review(id, value, fig) {

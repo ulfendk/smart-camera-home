@@ -6,6 +6,7 @@ go2rtc's player is proxied under go2rtc/ for the same reason: one port, reachabl
 
 import asyncio
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -110,6 +111,12 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
     @app.get("/api/cameras")
     def cameras() -> list[dict]:
         return [{"name": c.name, "location": c.location, "zones": list(c.zones)} for c in cfg.cameras.values()]
+
+    @app.get("/api/activity")
+    def activity() -> dict:
+        """Cameras with a person in view in the last few seconds, for the wall view."""
+        now = time.time()
+        return {"people": sorted(c for c, ts in engine.people_seen.items() if now - ts < 5)}
 
     @app.get("/api/events")
     def events(limit: int = 100, camera: str | None = None, min_score: float = 0, kind: str | None = None,

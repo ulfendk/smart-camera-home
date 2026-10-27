@@ -61,3 +61,15 @@ def test_event_download_is_an_attachment():
     assert c.get(f"/api/events/{ev}/download/clip").status_code == 404      # no clip yet
     assert c.get(f"/api/events/{ev}/download/db").status_code == 404        # only the event's media
     assert c.get("/api/events/99/download/snapshot").status_code == 404
+
+
+def test_activity_lists_cameras_with_a_person_in_view():
+    import time
+    cfg = load_config(TEST_CONFIG)
+    cfg.paths.data = Path(tempfile.mkdtemp())
+    db = Database(cfg.paths.data / "t.db")
+    engine = EventEngine(cfg, db, RulesConfig())
+    c = TestClient(create_app(cfg, db, engine))
+    assert c.get("/api/activity").json() == {"people": []}
+    engine.people_seen.update(front_door=time.time(), driveway=time.time() - 60)
+    assert c.get("/api/activity").json() == {"people": ["front_door"]}
