@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 from . import stills
 from .config import Config
-from .detect.yolo import providers
+from .detect.yolo import providers, session_options
 from .people import People
 
 log = logging.getLogger(__name__)
@@ -94,9 +94,7 @@ class FaceRecognizer:
         self.min_face = fc.min_face
         self.detector = cv2.FaceDetectorYN.create(str(fc.detector), "", (320, 320), 0.6, 0.3, 50)
         names, options = providers(ort.get_available_providers(), device)
-        opts = ort.SessionOptions()
-        opts.log_severity_level = 3
-        self.session = ort.InferenceSession(str(fc.model), sess_options=opts, providers=names, provider_options=options)
+        self.session = ort.InferenceSession(str(fc.model), sess_options=session_options(), providers=names, provider_options=options)
         self.input = self.session.get_inputs()[0].name
         self.lock = threading.Lock()   # one detector and session, used from worker threads
         used = self.session.get_providers()[0]

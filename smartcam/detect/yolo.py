@@ -27,6 +27,16 @@ PREFERRED_PROVIDERS = ("OpenVINOExecutionProvider", "CUDAExecutionProvider", "Co
                        "CPUExecutionProvider")
 
 
+def session_options() -> ort.SessionOptions:
+    opts = ort.SessionOptions()
+    opts.log_severity_level = 3  # CoreML logs partitioning warnings on every load
+    # Between runs ONNX Runtime's worker threads spin, waiting for the next one. With seven cameras the next one
+    # always comes, so they never rest: five busy cores for nothing, while the work itself is on the GPU.
+    opts.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    opts.add_session_config_entry("session.inter_op.allow_spinning", "0")
+    return opts
+
+
 def providers(available: list[str], device: str = "GPU") -> tuple[list[str], list[dict]]:
     """The execution providers to use, best first, with their options. `device` is OpenVINO's: GPU, NPU or CPU."""
     names = [p for p in PREFERRED_PROVIDERS if p in available]
@@ -36,9 +46,7 @@ def providers(available: list[str], device: str = "GPU") -> tuple[list[str], lis
 class YoloDetector:
     def __init__(self, model: Path, min_score: float = 0.3, iou: float = 0.5, device: str = "GPU"):
         names, options = providers(ort.get_available_providers(), device)
-        opts = ort.SessionOptions()
-        opts.log_severity_level = 3  # CoreML logs partitioning warnings on every load
-        self.session = ort.InferenceSession(str(model), sess_options=opts, providers=names, provider_options=options)
+        self.session = ort.InferenceSession(str(model), sess_options=session_options(), providers=names, provider_options=options)
         self.input = self.session.get_inputs()[0]
         self.size = self.input.shape[2]
         self.min_score, self.iou = min_score, iou
