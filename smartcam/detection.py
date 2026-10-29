@@ -112,7 +112,7 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
 async def run(cfg: Config, engine: EventEngine, watchdog: PowerWatchdog | None = None) -> None:
     from .detect.yolo import YoloDetector  # imported here so the recorder-only tools don't load onnxruntime
 
-    detector = await asyncio.to_thread(YoloDetector, cfg.detect.model)
+    detector = await asyncio.to_thread(YoloDetector, cfg.detect.model, device=cfg.detect.openvino_device)
     engine.detector = detector
     async with asyncio.TaskGroup() as tg:
         for cam in cfg.cameras.values():

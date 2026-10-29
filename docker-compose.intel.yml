@@ -1,0 +1,17 @@
+# smartcam on a Linux host with an Intel CPU and iGPU, no NVIDIA (e.g. a Core Ultra NUC): VAAPI decoding and
+# OpenVINO detection on the iGPU. Set `detect: {hwaccel: vaapi, openvino_device: GPU}` in smartcam.yml.
+# Put your config at $DATA_DIR/smartcam.yml (start from config/smartcam.example.yml) before the first start.
+# Host networking keeps RTSP/WebRTC simple (go2rtc 1984/8554/8555, UI 8971).
+services:
+  smartcam:
+    image: ghcr.io/ulfendk/smart-camera-home:${SMARTCAM_TAG:-intel}
+    restart: unless-stopped
+    stop_grace_period: 30s             # time to switch lights back and close the recordings
+    network_mode: host
+    environment:
+      TZ: ${TZ:-UTC}                   # recordings are filed by local time
+    devices:
+      - /dev/dri:/dev/dri              # Intel iGPU: VAAPI decoding and OpenVINO detection
+    volumes:
+      - ${DATA_DIR:-/srv/smartcam}:/app/data   # smartcam.yml, recordings, clips, snapshots, database
+      - /etc/localtime:/etc/localtime:ro

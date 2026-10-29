@@ -13,6 +13,20 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cuda              # NVIDIA GPU
+            base: nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
+            tags: |
+              ghcr.io/${{ github.repository }}:latest
+              ghcr.io/${{ github.repository }}:${{ github.sha }}
+          - variant: intel             # OpenVINO on an Intel iGPU
+            base: ubuntu:26.04
+            tags: |
+              ghcr.io/${{ github.repository }}:intel
+              ghcr.io/${{ github.repository }}:intel-${{ github.sha }}
     steps:
       - name: Free disk space   # the CUDA base image and torch (model export) overflow the default runner
         run: |
@@ -31,8 +45,9 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: |
+            VARIANT=${{ matrix.variant }}
+            BASE=${{ matrix.base }}
+          tags: ${{ matrix.tags }}
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}

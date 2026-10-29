@@ -101,6 +101,7 @@ detect:
   max_width: 1280       # sub-streams above this are scaled down before detection
   hwaccel: none         # videotoolbox (macOS), vaapi (Intel/AMD on Linux), none
   model: models/yolo11s.onnx   # yolo11m is more accurate if the GPU keeps up
+  openvino_device: GPU  # Intel image only: GPU (the iGPU), NPU or CPU
 
 rules:
   notify_score: 4

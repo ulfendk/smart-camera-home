@@ -105,6 +105,7 @@ class DetectConfig(BaseModel):
     max_width: int = 1280
     hwaccel: Literal["videotoolbox", "vaapi", "none"] = "none"
     model: Path = Path("models/yolo11m.onnx")
+    openvino_device: str = "GPU"    # Intel image only: run detection on the GPU (the iGPU), NPU or CPU
 
 
 class Go2rtcConfig(BaseModel):

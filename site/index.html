@@ -249,7 +249,7 @@
       <div class="card feature" style="--c:#00897b"><div class="ico"><span class="mdi mdi-car-speed-limiter"></span></div>
         <h3>Speed checks on your road</h3><p>Two lines across the road and the distance between them: every passing car gets its speed, a full-resolution shot of the car where it was measured, a close-up and its licence plate, with a push above your limit.</p></div>
       <div class="card feature" style="--c:#546e7a"><div class="ico"><span class="mdi mdi-chip"></span></div>
-        <h3>Runs on what you have</h3><p>YOLO11 on an NVIDIA GPU (GTX 10-series and newer) or Apple Silicon, hardware video decoding on Intel graphics.</p></div>
+        <h3>Runs on what you have</h3><p>YOLO11 on an NVIDIA GPU (GTX 10-series and newer), Intel graphics with OpenVINO (Core Ultra, Arc) or Apple Silicon, hardware video decoding on Intel graphics.</p></div>
     </div>
   </div>
 </section>
@@ -277,12 +277,12 @@
       <div>
         <ol>
           <li>Create a data folder and put your config in it as <code>smartcam.yml</code>, starting from the <a href="https://github.com/ulfendk/smart-camera-home/blob/main/config/smartcam.example.yml">example config</a>.</li>
-          <li>Start the stack with <code>docker compose up -d</code>, or as a Portainer stack straight from the repository.</li>
+          <li>Start the stack with <code>docker compose up -d</code>, or as a Portainer stack straight from the repository. On an Intel machine without NVIDIA, use the <code>intel</code> image and <a href="https://github.com/ulfendk/smart-camera-home/blob/main/docker-compose.intel.yml"><code>docker-compose.intel.yml</code></a> (OpenVINO on the integrated graphics).</li>
           <li>Open the web UI on port 8971, or add it to the Home Assistant sidebar (below). Everything else is set up in its Settings tab.</li>
         </ol>
         <div class="req">
           <span class="chip"><span class="mdi mdi-docker"></span>Docker</span>
-          <span class="chip"><span class="mdi mdi-expansion-card"></span>NVIDIA GPU, driver ≥ 525</span>
+          <span class="chip"><span class="mdi mdi-expansion-card"></span>NVIDIA GPU (driver ≥ 525) or Intel graphics</span>
           <span class="chip"><span class="mdi mdi-cctv"></span>RTSP cameras</span>
           <span class="chip"><span class="mdi mdi-home-assistant"></span>Home Assistant + MQTT</span>
         </div>

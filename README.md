@@ -46,6 +46,24 @@ Prerequisites: the NVIDIA driver (>= 525) and the NVIDIA Container Toolkit, so t
 Without an Intel iGPU, drop the `/dev/dri` device and set `detect.hwaccel: none`. Run only one
 SmartCam per set of cameras: two would fight over the lights and the MQTT client id.
 
+## Running with Docker (Linux, Intel without NVIDIA)
+
+For an Intel machine without an NVIDIA GPU, such as a Core Ultra mini PC, use the `intel` image
+(`ghcr.io/ulfendk/smart-camera-home:intel`, also `:intel-<commit sha>`). It runs detection with OpenVINO on
+the integrated graphics and decodes video there with VAAPI. It is built on Ubuntu 26.04 with Intel's current
+GPU compute runtime, for recent chips (Arc, Core Ultra); older iGPUs such as UHD 630 are no longer supported
+by that runtime and fall back to `openvino_device: CPU`.
+
+1. Data folder and config as above, with
+   ```yaml
+   detect:
+     hwaccel: vaapi
+     openvino_device: GPU    # or CPU; NPU is not in the image yet
+   ```
+2. `docker compose -f docker-compose.intel.yml up -d` with [`docker-compose.intel.yml`](docker-compose.intel.yml)
+   (it passes `/dev/dri` through; no NVIDIA toolkit needed).
+3. Check the log for `on OpenVINOExecutionProvider (GPU)`, then open `http://<host>:8971`.
+
 ## Running on a Mac (development)
 
 ```bash

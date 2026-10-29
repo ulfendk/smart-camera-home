@@ -1,4 +1,5 @@
-"""YOLO (Ultralytics ONNX export, 84 x N output) on ONNX Runtime: CUDA on Linux, CoreML on macOS, else CPU."""
+"""YOLO (Ultralytics ONNX export, 84 x N output) on ONNX Runtime: OpenVINO in the Intel image, CUDA in the NVIDIA
+image, CoreML on macOS, else CPU."""
 
 import logging
 import threading
@@ -22,15 +23,22 @@ COCO = ("person bicycle car motorcycle airplane bus train truck boat traffic_lig
 
 # Classes we care about; everything else is dropped right after inference.
 TRACKED = {"person", "bicycle", "car", "motorcycle", "bus", "truck", "cat", "dog"}
-PREFERRED_PROVIDERS = ("CUDAExecutionProvider", "CoreMLExecutionProvider", "CPUExecutionProvider")
+PREFERRED_PROVIDERS = ("OpenVINOExecutionProvider", "CUDAExecutionProvider", "CoreMLExecutionProvider",
+                       "CPUExecutionProvider")
+
+
+def providers(available: list[str], device: str = "GPU") -> tuple[list[str], list[dict]]:
+    """The execution providers to use, best first, with their options. `device` is OpenVINO's: GPU, NPU or CPU."""
+    names = [p for p in PREFERRED_PROVIDERS if p in available]
+    return names, [{"device_type": device} if p == "OpenVINOExecutionProvider" else {} for p in names]
 
 
 class YoloDetector:
-    def __init__(self, model: Path, min_score: float = 0.3, iou: float = 0.5):
-        providers = [p for p in PREFERRED_PROVIDERS if p in ort.get_available_providers()]
+    def __init__(self, model: Path, min_score: float = 0.3, iou: float = 0.5, device: str = "GPU"):
+        names, options = providers(ort.get_available_providers(), device)
         opts = ort.SessionOptions()
         opts.log_severity_level = 3  # CoreML logs partitioning warnings on every load
-        self.session = ort.InferenceSession(str(model), sess_options=opts, providers=providers)
+        self.session = ort.InferenceSession(str(model), sess_options=opts, providers=names, provider_options=options)
         self.input = self.session.get_inputs()[0]
         self.size = self.input.shape[2]
         self.min_score, self.iou = min_score, iou
@@ -38,7 +46,8 @@ class YoloDetector:
         # Camera threads share one session. Concurrent runs crash the CUDA provider (cuDNN failures,
         # illegal memory access), and one GPU gains nothing from them; pre/post-processing stays parallel.
         self.lock = threading.Lock()
-        log.info("%s on %s", model.name, self.session.get_providers()[0])
+        used = self.session.get_providers()[0]
+        log.info("%s on %s%s", model.name, used, f" ({device})" if used == "OpenVINOExecutionProvider" else "")
 
     def letterbox(self, image: np.ndarray) -> tuple[np.ndarray, float, int, int]:
         h, w = image.shape[:2]
