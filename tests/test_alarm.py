@@ -147,3 +147,49 @@ def test_morning_person_on_the_stairs_disarms_armed_home(monkeypatch):
         await alarm._occupancy("living_room", True)
         assert alarm.state == "disarmed" and not engine.home_armed
     asyncio.run(go())
+
+
+def test_confirming_an_alarm_announces_it_and_keeps_the_lights():
+    async def go():
+        alarm, engine, out = setup(light_minutes=1)
+        answers = []
+        alarm.on_response.append(lambda inc: asyncio.sleep(0, answers.append(inc)))
+        await alarm.arm()
+        await alarm.trigger("test", delay=0)
+        n = alarm.incident["id"]
+        assert alarm.incident["status"] == "open" and alarm.incident["kind"] == "intrusion"
+        await alarm.respond(f"SMARTCAM_CONFIRM_{n}", "Regin")
+        assert alarm.incident["status"] == "confirmed" and alarm.incident["by"] == "Regin"
+        assert alarm.state == TRIGGERED and answers[0]["status"] == "confirmed"
+        await alarm.respond(f"SMARTCAM_FALSE_{n}", "someone")   # answered already: no change
+        assert alarm.incident["status"] == "confirmed" and len(answers) == 1
+        await alarm.close()
+    asyncio.run(go())
+
+
+def test_false_alarm_switches_the_lights_off_marks_the_event_and_stays_armed():
+    async def go():
+        alarm, engine, out = setup(light_minutes=1)
+        ev = alarm.db.insert_event(camera="living_room", label="person", start_ts=1.0, max_score=0.6)
+        await alarm.arm()
+        await alarm.trigger("test", event_id=ev, delay=0)
+        await asyncio.sleep(0)
+        await alarm.respond(f"SMARTCAM_FALSE_{alarm.incident['id']}")
+        try:
+            await alarm._task
+        except asyncio.CancelledError:
+            pass
+        assert alarm.state == ARMED and out.calls[-1] == (WARNING_LIGHT, False)
+        assert alarm.db.event(ev)["review"] == "false_positive"
+    asyncio.run(go())
+
+
+def test_an_old_push_cannot_answer_a_newer_alarm():
+    async def go():
+        alarm, engine, out = setup()
+        await alarm.alert("smoke", "smoke at kitchen")
+        await alarm.alert("smoke", "smoke at hall")
+        assert await alarm.respond("SMARTCAM_CONFIRM_1") is None
+        assert alarm.incident["status"] == "open"
+        assert (await alarm.respond("SMARTCAM_CONFIRM_2"))["status"] == "confirmed"
+    asyncio.run(go())

@@ -54,7 +54,7 @@ class CollapseSlashes:
 
 
 def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.Event | None = None,
-               alarm=None, presence=None, doorbell=None) -> FastAPI:
+               alarm=None, presence=None, doorbell=None, smoke=None) -> FastAPI:
     app = FastAPI(title="SmartCam")
     app.add_middleware(CollapseSlashes)
     for sub in ("recordings", "snapshots", "clips"):
@@ -177,20 +177,34 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
 
     @app.get("/api/alarm")
     def get_alarm() -> dict:
-        return {"state": alarm.state if alarm else "unavailable"}
+        return {"state": alarm.state if alarm else "unavailable", "incident": alarm.incident if alarm else None}
 
     @app.post("/api/alarm/{command}")
     async def post_alarm(command: str) -> dict:
-        """arm_away, arm_home, disarm, or trigger (a test of the deterrence)."""
+        """arm_away, arm_home, disarm, trigger (a test of the deterrence), or confirm / false_alarm (answer the
+        current incident, as the push buttons do)."""
         if alarm is None:
             raise HTTPException(404, "alarm mode is off")
         if command == "trigger":
             await alarm.trigger("triggered from the web UI", delay=0)   # a test: no entry delay
         elif command in ("arm_away", "arm_home", "disarm"):
             await alarm.command(command)
+        elif command in ("confirm", "false_alarm"):
+            if alarm.incident is None:
+                raise HTTPException(404, "no alarm to answer")
+            from ..alarm import CONFIRM, FALSE
+            await alarm.respond(f"{CONFIRM if command == 'confirm' else FALSE}_{alarm.incident['id']}", "the web UI")
         else:
-            raise HTTPException(400, "command must be arm_away, arm_home, disarm or trigger")
-        return {"state": alarm.state}
+            raise HTTPException(400, "command must be arm_away, arm_home, disarm, trigger, confirm or false_alarm")
+        return {"state": alarm.state, "incident": alarm.incident}
+
+    @app.post("/api/smoke/test")
+    async def smoke_test() -> dict:
+        """The smoke alarm push, marked TEST: pictures from inside and the answer buttons."""
+        if smoke is None:
+            raise HTTPException(404, "the smoke alarm is not set up")
+        incident = await smoke.alarm_for("test", "a test from the web UI", test=True)
+        return {"incident": incident}
 
     @app.post("/api/ha/cameras")
     async def ha_cameras() -> dict:

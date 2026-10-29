@@ -5,6 +5,9 @@ With `ha.alarm_entity` set, SmartCam arms (away) and disarms with it, and arming
 own panel or web UI sets that entity, so keypads, locks and presence simulation stay in step.
 `ha.away_entity` does the same for away mode. Home Assistant is the source of truth at startup.
 SmartCam's "armed home" is its own: it neither sets the entity nor is undone by it being off.
+
+The same connection brings in the answers to alarm pushes (the "Confirm alarm" / "False alarm" buttons, as
+mobile_app_notification_action events, with who pressed) and the smoke sensors going off.
 """
 
 import asyncio
@@ -38,8 +41,9 @@ def service_for(entity: str, on: bool) -> tuple[str, str]:
 
 
 class HaLink:
-    def __init__(self, cfg: Config, engine: EventEngine, alarm=None):
-        self.cfg, self.engine, self.alarm = cfg, engine, alarm
+    def __init__(self, cfg: Config, engine: EventEngine, alarm=None, smoke=None):
+        self.cfg, self.engine, self.alarm, self.smoke = cfg, engine, alarm, smoke
+        self.users: dict[str, str] = {}   # Home Assistant user id -> the person's name, for "confirmed by"
         self.alarm_entity, self.away_entity = cfg.ha.alarm_entity, cfg.ha.away_entity
         self.ws = None
         self.n = 0
@@ -91,6 +95,28 @@ class HaLink:
     async def _away_changed(self, away: bool) -> None:
         await self._set_ha(self.away_entity, away)
 
+    def _person(self, state: dict) -> None:
+        if state.get("entity_id", "").startswith("person.") and (uid := state.get("attributes", {}).get("user_id")):
+            self.users[uid] = state["attributes"].get("friendly_name") or state["entity_id"].split(".", 1)[1]
+
+    async def _event(self, event: dict) -> None:
+        data = event.get("data", {})
+        if event.get("event_type") == "mobile_app_notification_action":
+            action = data.get("action", "")
+            if self.alarm is not None and action.startswith("SMARTCAM_"):
+                by = self.users.get((event.get("context") or {}).get("user_id"))
+                await self.alarm.respond(action, by)
+            return
+        entity, new = data.get("entity_id"), data.get("new_state")
+        if not new:
+            return
+        self._person(new)
+        if entity in self.wanted:
+            await self._apply(entity, is_on(new["state"]))
+        if self.smoke is not None and entity in self.smoke.sc.entities and new["state"] == "on" \
+                and (data.get("old_state") or {}).get("state") != "on":
+            asyncio.create_task(self.smoke.alarm_for(entity, new.get("attributes", {}).get("friendly_name")))
+
     async def run(self) -> None:
         url = self.cfg.ha.url.replace("http", "ws", 1).rstrip("/") + "/api/websocket"
         while True:
@@ -103,17 +129,18 @@ class HaLink:
                     self.ws, self.ha_states = ws, {}
                     states_id = await self._send({"type": "get_states"})
                     await self._send({"type": "subscribe_events", "event_type": "state_changed"})
-                    log.info("following %s in Home Assistant", ", ".join(self.wanted))
+                    await self._send({"type": "subscribe_events", "event_type": "mobile_app_notification_action"})
+                    if self.wanted:
+                        log.info("following %s in Home Assistant", ", ".join(self.wanted))
                     async for raw in ws:
                         msg = json.loads(raw)
                         if msg.get("id") == states_id and msg.get("type") == "result":
                             for s in msg.get("result") or []:
+                                self._person(s)
                                 if s["entity_id"] in self.wanted:
                                     await self._apply(s["entity_id"], is_on(s["state"]))
                         elif msg.get("type") == "event":
-                            data = msg["event"]["data"]
-                            if data.get("entity_id") in self.wanted and data.get("new_state"):
-                                await self._apply(data["entity_id"], is_on(data["new_state"]["state"]))
+                            await self._event(msg["event"])
             except (OSError, websockets.WebSocketException, ConnectionError) as e:
                 log.warning("Home Assistant link lost (%s); retrying in 10s", e)
             self.ws = None

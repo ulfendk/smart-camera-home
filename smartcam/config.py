@@ -145,6 +145,8 @@ class Config(BaseModel):
     timesync: dict = {}  # validated by timesync.TimeSyncConfig
     doorbell: dict = {}  # validated by ha.doorbell.DoorbellConfig
     wall: dict = {}  # validated by wallfeed.WallConfig
+    smoke: dict = {}  # validated by smoke.SmokeConfig
+    faces: dict = {}  # validated by faces.FacesConfig
     path: Path | None = None  # the file this was loaded from (the settings UI writes it)
 
 

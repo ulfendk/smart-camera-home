@@ -12,7 +12,7 @@ def test_discovery_covers_away_and_every_camera():
     topics = [t for t, _ in discovery_messages(cfg)]
     assert f"{cfg.mqtt.discovery_prefix}/switch/smartcam/away/config" in topics
     assert f"{cfg.mqtt.discovery_prefix}/switch/smartcam/wfh/config" in topics
-    assert len(topics) == 3 + 3 * len(cfg.cameras) + cfg.mqtt.alert_slots   # away, wfh, alarm, per camera, slots
+    assert len(topics) == 4 + 3 * len(cfg.cameras) + cfg.mqtt.alert_slots   # away, wfh, alarm, incident, per camera, slots
     ids = [p["unique_id"] for _, p in discovery_messages(cfg)]
     assert len(ids) == len(set(ids))
 
@@ -59,15 +59,18 @@ def test_detect_same_as_record_uses_one_camera_connection():
     assert streams["living_room_sub"] == ["rtsp://127.0.0.1:8554/living_room"]
 
 
+INCIDENT = {"id": 3, "kind": "intrusion", "why": "living_room: indoor while away", "event_id": 7, "status": "open", "by": None}
+
+
 def test_alarm_push_is_time_sensitive_or_critical_with_its_own_image():
     from smartcam.ha.notify import alarm_payload
     cfg = load_config(TEST_CONFIG)
     cfg.ha.alarm_critical = False
-    p = alarm_payload(cfg, "living_room: indoor while away", {"id": 7})
+    p = alarm_payload(cfg, INCIDENT, {"id": 7})
     assert p["data"]["push"]["interruption-level"] == "time-sensitive"
     assert p["data"]["priority"] == "high" and p["data"]["entity_id"] == "camera.smartcam_alert_8"
     cfg.ha.alarm_critical = True
-    p = alarm_payload(cfg, "test", None)
+    p = alarm_payload(cfg, INCIDENT, None)
     assert p["data"]["push"]["interruption-level"] == "critical" and p["data"]["push"]["sound"]["critical"] == 1
     assert "entity_id" not in p["data"]
 
@@ -89,9 +92,22 @@ def test_alarm_push_goes_to_alarm_notify_and_alerts_to_notify():
 
     n = HaNotifier(cfg, Engine())
     n.http = Http()
-    asyncio.run(n.alarm("indoor while away", None))
+    asyncio.run(n.alarm(INCIDENT, None))
     asyncio.run(n.alert({"id": 1, "camera": "front_door", "label": "person", "reasons": ["person"]}))
     assert sent == ["household", "mobile_app_me"]
     cfg.ha.alarm_notify = []
-    asyncio.run(n.alarm("test", None))
+    asyncio.run(n.alarm(INCIDENT, None))
     assert sent[-1] == "mobile_app_me"
+
+
+def test_alarm_push_has_answer_buttons_for_its_incident_and_the_answer_replaces_it():
+    from smartcam.ha.notify import alarm_payload, response_payload
+    cfg = load_config(TEST_CONFIG)
+    p = alarm_payload(cfg, INCIDENT, None)
+    assert [a["action"] for a in p["data"]["actions"]] == ["SMARTCAM_CONFIRM_3", "SMARTCAM_FALSE_3"]
+    assert p["data"]["tag"] == "smartcam-alarm-3"
+    smoke = alarm_payload(cfg, {**INCIDENT, "kind": "smoke", "why": "smoke at kitchen"}, None)
+    assert smoke["title"].endswith("Smoke alarm") and smoke["data"]["actions"]
+    answer = response_payload(cfg, {**INCIDENT, "status": "confirmed", "by": "Regin"})
+    assert answer["data"]["tag"] == "smartcam-alarm-3" and "by Regin" in answer["message"]
+    assert "actions" not in answer["data"]

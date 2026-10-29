@@ -9,9 +9,14 @@ switches away mode off.
 
 When triggered: the outdoor Dahuas' red/blue warning lights come on for `light_minutes`. After that
 the alarm goes quiet and does not trigger again until it is disarmed and armed again.
+
+Every alarm going off (an intrusion, or smoke from smoke.py) is an incident. Its push carries "Confirm alarm" and
+"False alarm" buttons; the answer comes back through respond(). Confirmed, it is announced (for escalation by
+Home Assistant); a false alarm switches the warning lights off and teaches the camera spot.
 """
 
 import asyncio
+import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -28,6 +33,8 @@ log = logging.getLogger(__name__)
 
 DISARMED, ARMING, ARMED, PENDING, TRIGGERED = "disarmed", "arming", "armed_away", "pending", "triggered"
 ARMED_HOME = "armed_home"   # people are home: outdoor activity warns, indoors is ignored, nothing goes off
+OPEN, CONFIRMED, FALSE_ALARM = "open", "confirmed", "false_alarm"   # incident status
+CONFIRM, FALSE = "SMARTCAM_CONFIRM", "SMARTCAM_FALSE"               # notification actions, + "_<incident id>"
 
 
 class AlarmConfig(BaseModel):
@@ -50,7 +57,8 @@ class Alarm:
         # camera -> object with async output(kind, on); injectable for tests
         self.outputs = outputs if outputs is not None else {n: _rpc_for(cfg, n) for n in names if n in cfg.cameras}
         self.on_state: list[Callable[[str], Awaitable[None]]] = []
-        self.on_trigger: list[Callable[[str, dict | None], Awaitable[None]]] = []   # (why, event)
+        self.on_trigger: list[Callable[[dict, dict | None], Awaitable[None]]] = []   # (incident, event)
+        self.on_response: list[Callable[[dict], Awaitable[None]]] = []               # incident, confirmed or not
         self.spent = self.db.get_setting("alarm_spent", "0") == "1"   # triggered once since arming
         self._task: asyncio.Task | None = None        # exit delay, entry delay or deterrence
         self.armed_at = float(self.db.get_setting("alarm_armed_at", "0"))   # when it became active
@@ -178,12 +186,54 @@ class Alarm:
         log.warning("ALARM triggered (%s)", why)
         await self._set_state(TRIGGERED)
         self._task = asyncio.create_task(self._deter())
+        await self.alert("intrusion", why, event_id)
+
+    @property
+    def incident(self) -> dict | None:
+        raw = self.db.get_setting("alarm_incident", "")
+        return json.loads(raw) if raw else None
+
+    def _save_incident(self, incident: dict) -> None:
+        self.db.set_setting("alarm_incident", json.dumps(incident))
+
+    async def alert(self, kind: str, why: str, event_id: int | None = None) -> dict:
+        """A new incident (kind "intrusion" or "smoke"): tell everyone, with buttons to answer it."""
+        n = int(self.db.get_setting("alarm_incidents", "0")) + 1
+        self.db.set_setting("alarm_incidents", str(n))
+        incident = {"id": n, "kind": kind, "why": why, "event_id": event_id, "ts": time.time(), "status": OPEN, "by": None}
+        self._save_incident(incident)
         event = self.db.event(event_id) if event_id is not None else None
         for cb in self.on_trigger:
             try:
-                await cb(why, event)
+                await cb(incident, event)
             except Exception:
                 log.exception("alarm trigger callback failed")
+        return incident
+
+    async def respond(self, action: str, by: str | None = None) -> dict | None:
+        """A tap on a push button (SMARTCAM_CONFIRM_<id> or SMARTCAM_FALSE_<id>), or the same from the web UI."""
+        kind, _, n = action.rpartition("_")
+        incident = self.incident
+        if kind not in (CONFIRM, FALSE) or incident is None or str(incident["id"]) != n:
+            log.info("alarm: ignoring %s (not the current incident)", action)
+            return None
+        if incident["status"] != OPEN:
+            return incident   # answered already, e.g. on another phone
+        incident["status"], incident["by"] = (CONFIRMED if kind == CONFIRM else FALSE_ALARM), by
+        self._save_incident(incident)
+        log.warning("alarm incident %d %s%s", incident["id"], incident["status"], f" by {by}" if by else "")
+        if incident["status"] == FALSE_ALARM and incident["kind"] == "intrusion":
+            if self.state == TRIGGERED and self._task:
+                self._task.cancel()   # the lights go off; it stays armed (spent)
+            if incident["event_id"] is not None and (event := self.db.event(incident["event_id"])):
+                self.engine.learn_review(event, "false_positive")
+                self.db.update_event(event["id"], review="false_positive")
+        for cb in self.on_response:
+            try:
+                await cb(incident)
+            except Exception:
+                log.exception("alarm response callback failed")
+        return incident
 
     async def _all(self, kind: int, on: bool) -> None:
         async def one(name, out):

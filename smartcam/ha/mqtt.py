@@ -2,6 +2,7 @@
 
 Entities:
 - switch.smartcam_away                  away mode (also settable from the smartcam UI)
+- sensor.smartcam_alarm_incident         the latest alarm (intrusion or smoke): open, confirmed or false_alarm
 - switch.smartcam_wfh                   working from home: every person outside is pushed
 - binary_sensor.smartcam_<camera>_person on while a confirmed person event is open on that camera
 - camera.smartcam_<camera>_snapshot     latest event snapshot; notifications use it as their image,
@@ -51,6 +52,10 @@ def discovery_messages(cfg: Config) -> list[tuple[str, dict]]:
         "name": "Alarm", "unique_id": "smartcam_alarm", "default_entity_id": "alarm_control_panel.smartcam_alarm",
         "state_topic": f"{p}/alarm/state", "command_topic": f"{p}/alarm/set", "supported_features": ["arm_away", "arm_home"],
         "code_arm_required": False, "code_disarm_required": False, "device": device, **avail}))
+    msgs.append((f"{d}/sensor/smartcam/alarm_incident/config", {
+        "name": "Alarm incident", "unique_id": "smartcam_alarm_incident", "default_entity_id": "sensor.smartcam_alarm_incident",
+        "icon": "mdi:alarm-light", "state_topic": f"{p}/alarm/incident", "json_attributes_topic": f"{p}/alarm/incident/attributes",
+        "device": device, **avail}))
     for name, cam in cfg.cameras.items():
         if cam.speed:
             msgs.append((f"{d}/sensor/smartcam/{name}_vehicle_speed/config", {
@@ -86,6 +91,8 @@ class HaMqtt:
         engine.on_speed.insert(0, self._publish_speed)   # before the notifier, which shows its image
         if alarm is not None:
             alarm.on_state.append(self._publish_alarm)
+            alarm.on_trigger.insert(0, lambda incident, event: self._publish_incident(incident))
+            alarm.on_response.insert(0, self._publish_incident)
 
     async def run(self) -> None:
         m, p = self.cfg.mqtt, self.cfg.mqtt.topic_prefix
@@ -107,6 +114,8 @@ class HaMqtt:
                     await client.subscribe(f"{p}/wfh/set")
                     if self.alarm is not None:
                         await self._publish_alarm(self.alarm.state)
+                        if self.alarm.incident:
+                            await self._publish_incident(self.alarm.incident)
                         await client.subscribe(f"{p}/alarm/set")
                     log.info("connected to MQTT %s:%d", m.host, m.port)
                     async for msg in client.messages:
@@ -139,6 +148,11 @@ class HaMqtt:
 
     async def _publish_alarm(self, state: str) -> None:
         await self._publish("alarm/state", state)
+
+    async def _publish_incident(self, incident: dict) -> None:
+        """open, confirmed or false_alarm, with the incident (kind, why, event_id, by) as attributes."""
+        await self._publish("alarm/incident/attributes", json.dumps(incident))
+        await self._publish("alarm/incident", incident["status"])
 
     async def _publish_away(self, away: bool) -> None:
         await self._publish("away/state", "ON" if away else "OFF")

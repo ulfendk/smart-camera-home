@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from ..config import Config
 from ..db import Database
+from ..stills import grab, join
 
 log = logging.getLogger(__name__)
 
@@ -29,15 +30,6 @@ class DoorbellConfig(BaseModel):
     height: int = 720                       # of the joined picture
 
 
-def join(images: list[np.ndarray], height: int) -> np.ndarray:
-    scaled = [cv2.resize(i, (round(i.shape[1] * height / i.shape[0]), height), interpolation=cv2.INTER_AREA) for i in images]
-    gap = np.zeros((height, 6, 3), np.uint8)
-    out = scaled[0]
-    for img in scaled[1:]:
-        out = np.hstack([out, gap, img])
-    return out
-
-
 class Doorbell:
     def __init__(self, cfg: Config, db: Database, mqtt=None, dc: DoorbellConfig | None = None):
         self.cfg, self.db, self.mqtt = cfg, db, mqtt
@@ -47,10 +39,7 @@ class Doorbell:
         self.last = 0.0
 
     async def _frame(self, camera: str) -> np.ndarray | None:
-        r = await self.http.get(f"http://127.0.0.1:{self.cfg.go2rtc.api_port}/api/frame.jpeg", params={"src": camera})
-        if r.status_code != 200:
-            return None
-        return cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
+        return await grab(self.cfg, self.http, camera)
 
     async def ring(self) -> int | None:
         """Take the picture and tell everyone. Returns the event id."""
