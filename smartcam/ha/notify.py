@@ -7,7 +7,8 @@ import httpx
 from ..config import Config
 from ..events import EventEngine
 from ..speed import SpeedConfig
-from ..alarm import CONFIRM, CONFIRMED, FALSE
+from ..alarm import CONFIRM, CONFIRMED, FALSE, STOP
+from ..escalation import EscalationConfig
 from .mqtt import alert_slot
 
 log = logging.getLogger(__name__)
@@ -67,6 +68,8 @@ def response_payload(cfg: Config, incident: dict) -> dict:
     confirmed = incident["status"] == CONFIRMED
     title = ALARM_TITLES.get(incident["kind"], ALARM_TITLES["intrusion"])
     data = {"tag": f"smartcam-alarm-{incident['id']}", "push": {"interruption-level": "time-sensitive"}, "priority": "high"}
+    if confirmed and EscalationConfig(**cfg.escalation).enabled:   # the lights and siren are going: a way to stop them
+        data["actions"] = [{"action": f"{STOP}_{incident['id']}", "title": "Stop siren and lights"}]
     if cfg.ha.event_url and incident.get("event_id") is not None:
         data["url"] = data["clickAction"] = cfg.ha.event_url.replace("{id}", str(incident["event_id"]))
     return {"title": f"{title}: {'confirmed' if confirmed else 'false alarm'}",

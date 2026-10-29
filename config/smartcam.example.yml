@@ -126,6 +126,13 @@ faces:                  # who it is: people from Home Assistant (family) plus pe
   threshold: 0.45       # face similarity for a name
   wait: 4               # working from home / armed home: hold a push this long, family is not pushed
 
+escalation:             # a confirmed alarm ("Confirm alarm" on the push): lights to full, siren on the speakers
+  enabled: false
+  lights: [all]         # all = every light; saved as a scene first and put back when stopped or disarmed
+  speakers: []          # e.g. [media_player.kitchen, media_player.living_room] (Sonos are snapshotted and restored)
+  volume: 0.6
+  siren_minutes: 5
+
 smoke:                  # Home Assistant smoke sensors: push a picture from inside, critical, with answer buttons
   entities: []          # e.g. [binary_sensor.kitchen_smoke]
   cameras: []           # joined into the picture; empty = every indoor camera

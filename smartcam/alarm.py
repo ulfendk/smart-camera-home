@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 DISARMED, ARMING, ARMED, PENDING, TRIGGERED = "disarmed", "arming", "armed_away", "pending", "triggered"
 ARMED_HOME = "armed_home"   # people are home: outdoor activity warns, indoors is ignored, nothing goes off
 OPEN, CONFIRMED, FALSE_ALARM = "open", "confirmed", "false_alarm"   # incident status
-CONFIRM, FALSE = "SMARTCAM_CONFIRM", "SMARTCAM_FALSE"               # notification actions, + "_<incident id>"
+CONFIRM, FALSE, STOP = "SMARTCAM_CONFIRM", "SMARTCAM_FALSE", "SMARTCAM_STOP"   # push actions, + "_<incident id>"
 
 
 class AlarmConfig(BaseModel):
@@ -59,6 +59,7 @@ class Alarm:
         self.on_state: list[Callable[[str], Awaitable[None]]] = []
         self.on_trigger: list[Callable[[dict, dict | None], Awaitable[None]]] = []   # (incident, event)
         self.on_response: list[Callable[[dict], Awaitable[None]]] = []               # incident, confirmed or not
+        self.on_stop: list[Callable[[dict], Awaitable[None]]] = []                   # "Stop siren" (escalation.py)
         self.spent = self.db.get_setting("alarm_spent", "0") == "1"   # triggered once since arming
         self._task: asyncio.Task | None = None        # exit delay, entry delay or deterrence
         self.armed_at = float(self.db.get_setting("alarm_armed_at", "0"))   # when it became active
@@ -211,12 +212,21 @@ class Alarm:
         return incident
 
     async def respond(self, action: str, by: str | None = None) -> dict | None:
-        """A tap on a push button (SMARTCAM_CONFIRM_<id> or SMARTCAM_FALSE_<id>), or the same from the web UI."""
+        """A tap on a push button (SMARTCAM_CONFIRM_<id>, SMARTCAM_FALSE_<id> or SMARTCAM_STOP_<id>), or the same
+        from the web UI."""
         kind, _, n = action.rpartition("_")
         incident = self.incident
-        if kind not in (CONFIRM, FALSE) or incident is None or str(incident["id"]) != n:
+        if kind not in (CONFIRM, FALSE, STOP) or incident is None or str(incident["id"]) != n:
             log.info("alarm: ignoring %s (not the current incident)", action)
             return None
+        if kind == STOP:
+            log.warning("alarm incident %d: siren stopped%s", incident["id"], f" by {by}" if by else "")
+            for cb in self.on_stop:
+                try:
+                    await cb(incident)
+                except Exception:
+                    log.exception("alarm stop callback failed")
+            return incident
         if incident["status"] != OPEN:
             return incident   # answered already, e.g. on another phone
         incident["status"], incident["by"] = (CONFIRMED if kind == CONFIRM else FALSE_ALARM), by

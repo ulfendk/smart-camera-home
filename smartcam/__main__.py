@@ -37,7 +37,7 @@ async def main() -> None:
     if cfg.mqtt.enabled:
         from .ha.mqtt import HaMqtt
         mqtt = HaMqtt(cfg, engine, alarm)
-    link = smoke = None
+    link = smoke = escalation = None
     if cfg.ha.enabled:
         from .ha.link import HaLink
         from .ha.notify import HaNotifier
@@ -45,6 +45,9 @@ async def main() -> None:
         HaNotifier(cfg, engine, alarm)
         smoke = Smoke(cfg, db, alarm, mqtt if cfg.mqtt.enabled else None) \
             if alarm is not None and SmokeConfig(**cfg.smoke).entities else None
+        from .escalation import Escalation, EscalationConfig
+        if alarm is not None and EscalationConfig(**cfg.escalation).enabled:
+            escalation = Escalation(cfg, alarm)   # a confirmed alarm: lights to full, siren on the speakers
         link = HaLink(cfg, engine, alarm, smoke, people)   # alarm/away entities, push buttons, smoke sensors, people
     if cfg.ha.enabled and any(c.person_lights for c in cfg.cameras.values()):
         from .ha.person_lights import PersonLights, PersonLightsConfig
@@ -64,7 +67,7 @@ async def main() -> None:
     if (wd := PowerWatchdog(cfg)).last_frame:   # any camera it can restart
         watchdog = wd
     restart = asyncio.Event()
-    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine, restart, alarm, presence, doorbell, smoke, people), host="0.0.0.0", port=cfg.web.port,
+    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine, restart, alarm, presence, doorbell, smoke, people, escalation), host="0.0.0.0", port=cfg.web.port,
                                            log_level="warning", lifespan="off"))  # no startup hooks
     if alarm is not None:
         await alarm.startup()

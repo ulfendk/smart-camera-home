@@ -151,7 +151,7 @@
   <div class="away" id="away" role="switch" aria-checked="false" tabindex="0"><span id="away-label">Home</span><span class="switch"></span></div>
   <span style="position:relative"><button class="alarm" id="alarm" hidden title="Arm or disarm the alarm">Alarm off</button>
     <span class="arm-menu" id="arm-menu" hidden><button class="chip" data-cmd="arm_away">Arm away</button><button class="chip" data-cmd="arm_home">Arm home</button></span>
-    <span class="arm-menu" id="answer-menu" hidden><button class="chip" data-cmd="confirm">Confirm alarm</button><button class="chip" data-cmd="false_alarm">False alarm</button><button class="chip" data-cmd="disarm">Disarm</button></span></span>
+    <span class="arm-menu" id="answer-menu" hidden><button class="chip" data-cmd="confirm">Confirm alarm</button><button class="chip" data-cmd="false_alarm">False alarm</button><button class="chip" data-cmd="stop" hidden>Stop siren</button><button class="chip" data-cmd="disarm">Disarm</button></span></span>
 </header>
 <main>
   <div class="live-bar" id="live-bar"><button class="btn" id="wall-open" title="All cameras on one screen, for keeping an eye on things">Wall view</button></div>
@@ -225,7 +225,10 @@ async function loadAlarm() {
   $("alarm").hidden = state === "unavailable";
   $("alarm").dataset.state = state;
   $("alarm").textContent = state === "triggered" && incident?.status === "confirmed" ? "ALARM (confirmed)" : ALARM_LABEL[state] || state;
-  $("answer-menu").hidden = !(state === "triggered" && incident?.status === "open") || $("answer-menu").hidden;
+  const answering = state === "triggered" && incident?.status === "open", escalated = incident?.status === "confirmed";
+  $("answer-menu").hidden = !(answering || escalated) || $("answer-menu").hidden;
+  for (const b of $("answer-menu").querySelectorAll('[data-cmd="confirm"], [data-cmd="false_alarm"]')) b.hidden = !answering;
+  $("answer-menu").querySelector('[data-cmd="stop"]').hidden = !escalated;
 }
 for (const b of document.querySelectorAll("#answer-menu [data-cmd]")) b.onclick = async () => {
   $("answer-menu").hidden = true;
@@ -234,7 +237,8 @@ for (const b of document.querySelectorAll("#answer-menu [data-cmd]")) b.onclick 
 };
 $("alarm").onclick = async () => {
   if ($("alarm").dataset.state === "disarmed") { $("arm-menu").hidden = !$("arm-menu").hidden; return; }
-  if ($("alarm").dataset.state === "triggered" && incident?.status === "open" && $("answer-menu").hidden) { $("answer-menu").hidden = false; return; }
+  if (($("alarm").dataset.state === "triggered" || incident?.status === "confirmed") && incident && incident.status !== "false_alarm"
+      && $("answer-menu").hidden) { $("answer-menu").hidden = false; loadAlarm(); return; }
   await fetch("api/alarm/disarm", {method: "POST"});
   await loadAlarm(); loadAway();
 };
@@ -555,6 +559,14 @@ const SECTIONS = [
     ["faces.threshold", "Same face from", "number", 0.45, "similarity 0..1; higher: fewer but surer names"],
     ["faces.wait", "Wait for the name (s)", "number", 4, "working from home / armed home: hold a push this long to see if it is family"],
   ]},
+  {title: "Escalation", desc: "When someone confirms an alarm (the Confirm alarm button on the push, or here), every chosen light goes to full brightness and the speakers play a siren. The lights are saved as a Home Assistant scene first and the Sonos speakers snapshotted; Stop siren (on the next push), disarming or the time running out puts both back. Needs SmartCam's address under Home Assistant, so the speakers can fetch the siren.", escalation: true, fields: [
+    ["escalation.enabled", "Escalate a confirmed alarm", "bool", false],
+    ["escalation.lights", "Lights", "list", ["all"], "to full brightness; all = every light"],
+    ["escalation.speakers", "Speakers", "list", [], "media players for the siren, e.g. media_player.kitchen"],
+    ["escalation.volume", "Volume", "number", 0.6, "0..1"],
+    ["escalation.siren_minutes", "Siren for (min)", "number", 5],
+    ["escalation.lights_minutes", "Lights for (min)", "number", 30, "or until stopped or disarmed"],
+  ]},
   {title: "Smoke alarm", desc: "When a Home Assistant smoke sensor goes off, the indoor cameras are joined into one picture and pushed as an alarm (critical, to the alarm notify services), with Confirm alarm / False alarm buttons. Works armed or not.", smoke: true, fields: [
     ["smoke.entities", "Smoke sensors", "list", [], "e.g. binary_sensor.kitchen_smoke, comma-separated"],
     ["smoke.cameras", "Cameras", "list", [], "joined into the picture; empty = every indoor camera"],
@@ -720,6 +732,15 @@ function renderSettings() {
       };
       fetch("api/people").then(r => r.json()).then(render);
       card.appendChild(box);
+    }
+    if (s.escalation) {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML = `<button class="btn outlined">Test for 15 seconds</button><small class="muted">Lights to full and the siren, then everything back as it was (saved settings, after a restart).</small>`;
+      row.querySelector("button").onclick = async () => {
+        const r = await fetch("api/escalation/test", {method: "POST"}); row.querySelector("small").textContent = r.ok ? "Running for 15 seconds…" : "Not set up (enable, save and restart first).";
+      };
+      card.appendChild(row);
     }
     if (s.smoke) {
       const row = document.createElement("div");

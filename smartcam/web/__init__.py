@@ -63,7 +63,8 @@ class CollapseSlashes:
 
 
 def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.Event | None = None,
-               alarm=None, presence=None, doorbell=None, smoke=None, people=None) -> FastAPI:
+               alarm=None, presence=None, doorbell=None, smoke=None, people=None,
+               escalation=None) -> FastAPI:
     app = FastAPI(title="SmartCam")
     app.add_middleware(CollapseSlashes)
     if people is None:
@@ -242,14 +243,31 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
             await alarm.trigger("triggered from the web UI", delay=0)   # a test: no entry delay
         elif command in ("arm_away", "arm_home", "disarm"):
             await alarm.command(command)
-        elif command in ("confirm", "false_alarm"):
+        elif command in ("confirm", "false_alarm", "stop"):
             if alarm.incident is None:
                 raise HTTPException(404, "no alarm to answer")
-            from ..alarm import CONFIRM, FALSE
-            await alarm.respond(f"{CONFIRM if command == 'confirm' else FALSE}_{alarm.incident['id']}", "the web UI")
+            from ..alarm import CONFIRM, FALSE, STOP
+            action = {"confirm": CONFIRM, "false_alarm": FALSE, "stop": STOP}[command]
+            await alarm.respond(f"{action}_{alarm.incident['id']}", "the web UI")
         else:
-            raise HTTPException(400, "command must be arm_away, arm_home, disarm, trigger, confirm or false_alarm")
+            raise HTTPException(400, "command must be arm_away, arm_home, disarm, trigger, confirm, false_alarm or stop")
         return {"state": alarm.state, "incident": alarm.incident}
+
+    @app.get("/siren.wav")
+    def siren_wav() -> Response:
+        """The escalation siren, played by the speakers through Home Assistant."""
+        from ..escalation import siren
+        if not hasattr(siren_wav, "data"):
+            siren_wav.data = siren()
+        return Response(siren_wav.data, media_type="audio/wav")
+
+    @app.post("/api/escalation/test")
+    async def escalation_test(seconds: float = 15) -> dict:
+        """Lights to full and the siren for a few seconds, then everything back as it was."""
+        if escalation is None:
+            raise HTTPException(404, "escalation is not set up")
+        await escalation.start(siren_minutes=seconds / 60, lights_minutes=seconds / 60)
+        return {"seconds": seconds}
 
     @app.post("/api/smoke/test")
     async def smoke_test() -> dict:

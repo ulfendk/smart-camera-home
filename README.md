@@ -139,7 +139,10 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   Every alarm push has **Confirm alarm** and **False alarm** buttons. The answer replaces the push on every phone (with
   who answered), is fired to Home Assistant as `smartcam_alarm_confirmed` / `smartcam_alarm_false` for your own
   escalation, and shows in `sensor.smartcam_alarm_incident`; a false alarm switches the warning lights off and teaches
-  the camera spot.
+  the camera spot. With `escalation.enabled`, a confirmed alarm turns every light (or the ones you choose) to full and
+  plays a siren on your speakers (SmartCam's own sound, through `media_player.play_media`); the lights are saved as a
+  Home Assistant scene and the Sonos speakers snapshotted first, and "Stop siren and lights" on the next push,
+  disarming or the time running out puts both back.
 - Smoke alarm: with `smoke.entities` (Home Assistant smoke sensors), a sensor going off pushes the indoor cameras as one
   picture, critical, to the alarm's notify services, with the same buttons, armed or not.
 - People: everyone in Home Assistant is on SmartCam's people list as family; add others in Settings → People (friends,
@@ -163,6 +166,7 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 | `detect` | fps, hardware decoding, model |
 | `alarm` | alarm mode: trigger score, exit and entry delays, red/blue warning lights |
 | `smoke` | smoke sensors that push a picture from inside |
+| `escalation` | a confirmed alarm: lights to full, siren on the speakers |
 | `faces` | person recognition: on/off, similarity threshold, how long a push waits for a name |
 | `record` | what stays on disk: a rolling buffer of everything (`continuous_hours`), event clips and snapshots (`event_days`), and a free-space guard (`min_free_gb`) |
 
@@ -206,6 +210,7 @@ smartcam/
   faces.py         who it is: faces, and names carried from camera to camera
   people.py        the people list and learned faces
   smoke.py         smoke alarm pictures
+  escalation.py    a confirmed alarm: lights and siren
   clips.py         clip cutting (stream copy)
   db.py            SQLite
   ha/              MQTT discovery and push notifications
