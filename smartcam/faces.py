@@ -131,6 +131,7 @@ class Seen:
     camera: str
     start: float
     last: float
+    box: tuple = (0.0, 0.0, 1.0, 1.0)   # the person's newest box
     attempts: int = 0
     next_at: float = 0.0
     busy: bool = False
@@ -165,11 +166,11 @@ class Recognition:
         s = self.seen.get(ev.id)
         if s is None:
             s = self.seen[ev.id] = Seen(ev, ev.camera, ev.start, now)
-        s.last = now
+        s.last, s.box = now, tuple(box)
         if s.busy or s.attempts >= self._max(s) or now < s.next_at:
             return
         s.busy, s.attempts, s.next_at = True, s.attempts + 1, now + self.fc.interval
-        task = asyncio.create_task(self._look(s, tuple(box)))
+        task = asyncio.create_task(self._look(s))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
@@ -182,11 +183,12 @@ class Recognition:
         except TimeoutError:
             pass
 
-    async def _look(self, s: Seen, box) -> None:
+    async def _look(self, s: Seen) -> None:
         try:
             image = await self.grab(self.cfg, self.http, s.camera)
             if image is None:
                 return
+            box = s.box   # a still takes a second or two (the next keyframe): where they are now
             person = crop(image, box)
             if (sig := signature(person)) is not None and person.size >= s.sig_area:
                 s.sig, s.sig_area = sig, person.size   # the biggest view of them is the best
