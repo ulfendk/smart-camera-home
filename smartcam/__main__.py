@@ -13,6 +13,8 @@ from .config import load_config
 from .db import Database
 from .alarm import Alarm, AlarmConfig
 from .events import EventEngine, RulesConfig
+from .faces import FacesConfig, Recognition
+from .people import People
 from .wallfeed import WallConfig, WallFeed
 from .web import create_app
 
@@ -26,6 +28,9 @@ async def main() -> None:
     cfg = load_config()
     db = Database(cfg.paths.data / "smartcam.db")
     engine = EventEngine(cfg, db, RulesConfig(**cfg.rules))
+    people = People(db)
+    if FacesConfig(**cfg.faces).enabled:
+        Recognition(cfg, engine, people)   # loads the face models; sets engine.recognizer
     alarm = None
     if AlarmConfig(**cfg.alarm).enabled:
         alarm = Alarm(cfg, db, engine)
@@ -40,7 +45,7 @@ async def main() -> None:
         HaNotifier(cfg, engine, alarm)
         smoke = Smoke(cfg, db, alarm, mqtt if cfg.mqtt.enabled else None) \
             if alarm is not None and SmokeConfig(**cfg.smoke).entities else None
-        link = HaLink(cfg, engine, alarm, smoke)   # alarm/away entities, push buttons, smoke sensors
+        link = HaLink(cfg, engine, alarm, smoke, people)   # alarm/away entities, push buttons, smoke sensors, people
     if cfg.ha.enabled and any(c.person_lights for c in cfg.cameras.values()):
         from .ha.person_lights import PersonLights, PersonLightsConfig
         if PersonLightsConfig(**cfg.person_lights).enabled:
@@ -59,7 +64,7 @@ async def main() -> None:
     if (wd := PowerWatchdog(cfg)).last_frame:   # any camera it can restart
         watchdog = wd
     restart = asyncio.Event()
-    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine, restart, alarm, presence, doorbell, smoke), host="0.0.0.0", port=cfg.web.port,
+    server = uvicorn.Server(uvicorn.Config(create_app(cfg, db, engine, restart, alarm, presence, doorbell, smoke, people), host="0.0.0.0", port=cfg.web.port,
                                            log_level="warning", lifespan="off"))  # no startup hooks
     if alarm is not None:
         await alarm.startup()

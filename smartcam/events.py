@@ -55,6 +55,10 @@ class OpenEvent:
     notified: bool = False
     tracks: set[int] = field(default_factory=set)
     closed_at: float | None = None     # last track ended; final once merge_gap passes without a new one
+    person: str | None = None          # who it is (faces.py), if known
+    person_group: str | None = None    # family, friend, neighbour, other
+    person_score: float = 0.0          # face similarity; 0 for a name carried from another camera
+    person_via: str | None = None      # the camera the name was carried from
 
 
 def is_night(ts: float, rules: RulesConfig) -> bool:
@@ -91,6 +95,11 @@ def score_event(ev: OpenEvent, now: float, away: bool, rules: RulesConfig,
     if recent_other:
         score += 1
         reasons.append(f"seen on {', '.join(recent_other)} just before")
+    # Who it is changes nothing in the score: a known person in the house while away is still an alarm.
+    if ev.person and ev.person_via:
+        reasons.append(f"probably {ev.person} (seen at {ev.person_via})")
+    elif ev.person:
+        reasons.append(f"known: {ev.person} ({ev.person_group or 'other'})")
     return score, reasons
 
 
@@ -133,6 +142,8 @@ class EventEngine:
         self.static_maps: dict[str, StaticMap] = {}   # camera -> its static map, set by detection
         self.live_frames: dict[str, tuple] = {}   # camera -> (ts, newest image), for the wall feed
         self.on_occupancy: list[Callable[[str, bool], Awaitable[None]]] = []   # (camera, occupied)
+        self.on_person: list[Notifier] = []    # an event's person was named (faces.py)
+        self.recognizer = None                 # faces.Recognition, when recognition is on
         self.snapshots = cfg.paths.data / "snapshots"
         self.clips = cfg.paths.data / "clips"
 
@@ -196,6 +207,8 @@ class EventEngine:
             if ev is None or t.last_ts != now:
                 continue
             self._update_zones(ev, t, now)
+            if self.recognizer is not None:
+                self.recognizer.see(ev, t.box, now)
             if t.history[-1][2] > ev.best_score:
                 ev.best_score = t.history[-1][2]
                 self._snapshot(ev, res, t)
@@ -275,10 +288,38 @@ class EventEngine:
         fresh = not (self.away or home or wfh) or ev.start >= self.away_since
         if not ev.notified and fresh and should_notify(ev, self.away, now, self.rules, home_armed=home, wfh=wfh):
             ev.notified = True
-            self.db.update_event(ev.id, notified=1)
-            event = self.db.event(ev.id)
-            for notify in self.on_alert:
-                await self._safe(notify, event)
+            if self.recognizer is not None and (home or wfh) and not self.away:
+                self._spawn(self._push_unless_family(ev))   # family at home is not news
+            else:
+                await self._push(ev)
+
+    async def _push(self, ev: OpenEvent) -> None:
+        self.db.update_event(ev.id, notified=1)
+        event = self.db.event(ev.id)
+        for notify in self.on_alert:
+            await self._safe(notify, event)
+
+    async def _push_unless_family(self, ev: OpenEvent) -> None:
+        await self.recognizer.wait(ev.id, self.recognizer.fc.wait)
+        if ev.person_group == "family":
+            log.info("event %d: %s, family: not pushed", ev.id, ev.person)
+            return
+        await self._push(ev)
+
+    def _spawn(self, coro) -> None:
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def set_person(self, ev: OpenEvent, name: str, group: str | None, score: float, via: str | None) -> None:
+        """Recognition named the event's person (via: carried from that camera)."""
+        ev.person, ev.person_group, ev.person_score, ev.person_via = name, group, score, via
+        self.db.update_event(ev.id, person=name, person_score=score, person_via=via)
+        log.info("event %d: %s%s", ev.id, name, f" (carried from {via})" if via else f" ({score:.2f})")
+        await self._rescore(ev, ev.last_ts)
+        event = {**self.db.event(ev.id), "person_group": group}
+        for cb in self.on_person:
+            await self._safe(cb, event)
 
     def _snapshot(self, ev: OpenEvent, res: FrameResult, t: Track) -> None:
         img = res.frame.image.copy()

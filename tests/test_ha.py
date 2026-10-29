@@ -88,7 +88,7 @@ def test_alarm_push_goes_to_alarm_notify_and_alerts_to_notify():
             return type("R", (), {"raise_for_status": lambda self: None})()
 
     class Engine:
-        on_alert, on_clip, on_speed = [], [], []
+        on_alert, on_clip, on_speed, on_person = [], [], [], []
 
     n = HaNotifier(cfg, Engine())
     n.http = Http()

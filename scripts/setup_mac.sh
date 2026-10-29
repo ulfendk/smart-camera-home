@@ -25,4 +25,10 @@ for m in yolo11s yolo11m; do
   fi
 done
 
+# Face recognition models (the same revisions as in the Docker image).
+[ -f models/yunet.onnx ] || curl -fsSL -o models/yunet.onnx \
+  "https://huggingface.co/opencv/face_detection_yunet/resolve/3cc26e7f1014a5ee5d74a42acee58bafc9d0a310/face_detection_yunet_2023mar.onnx"
+[ -f models/auraface.onnx ] || curl -fsSL -o models/auraface.onnx \
+  "https://huggingface.co/fal/AuraFace-v1/resolve/af6d057c9b0ec4071d4c49c80e3539258798b609/glintr100.onnx"
+
 echo "Done. Next: cp config/smartcam.example.yml config/smartcam.yml && cp .env.example .env"

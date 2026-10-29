@@ -28,8 +28,9 @@ def alert_payload(cfg: Config, event: dict, clip_ready: bool = False) -> dict:
     }
     if cfg.ha.event_url:
         data["url"] = data["clickAction"] = cfg.ha.event_url.replace("{id}", str(event["id"]))
+    who = event.get("person") and f"{event['person']}{'?' if event.get('person_via') else ''}"
     return {
-        "title": f"{'Clip: ' if clip_ready else ''}{event['label'].capitalize()} at {camera}",
+        "title": f"{'Clip: ' if clip_ready else ''}{who or event['label'].capitalize()} at {camera}",
         "message": reasons or "person detected",
         "data": data,
     }
@@ -54,7 +55,10 @@ def alarm_payload(cfg: Config, incident: dict, event: dict | None) -> dict:
         data |= {"entity_id": entity, "image": f"/api/camera_proxy/{entity}"}
     if cfg.ha.event_url:
         data["url"] = data["clickAction"] = cfg.ha.event_url.replace("{id}", str(event["id"] if event else ""))
-    return {"title": ALARM_TITLES.get(incident["kind"], ALARM_TITLES["intrusion"]), "message": incident["why"], "data": data}
+    why = incident["why"]
+    if event is not None and event.get("person") and event["person"] not in why:
+        why += f", seen: {event['person']}{'?' if event.get('person_via') else ''}"   # still an alarm, but now with a name
+    return {"title": ALARM_TITLES.get(incident["kind"], ALARM_TITLES["intrusion"]), "message": why, "data": data}
 
 
 def response_payload(cfg: Config, incident: dict) -> dict:
@@ -80,6 +84,7 @@ class HaNotifier:
             alarm.on_trigger.append(self.alarm)
             alarm.on_response.append(self.response)
         engine.on_speed.append(self.speed)
+        engine.on_person.append(self.person)
 
     async def _send(self, payload: dict, services: list[str] | None = None) -> None:
         for service in services or self.cfg.ha.notify:
@@ -89,6 +94,14 @@ class HaNotifier:
     async def alert(self, event: dict) -> None:
         await self._send(alert_payload(self.cfg, event))
         log.info("notified event %d", event["id"])
+
+    async def person(self, event: dict) -> None:
+        """A name for an event: Home Assistant hears it, and an already sent push is replaced by one with the name."""
+        await self.fire("smartcam_person", {"camera": event["camera"], "name": event["person"],
+                                            "group": event.get("person_group"), "event_id": event["id"],
+                                            "carried_from": event.get("person_via")})
+        if event["notified"]:
+            await self._send(alert_payload(self.cfg, event, clip_ready=bool(event.get("clip"))))
 
     async def speed(self, event: dict) -> None:
         sc = SpeedConfig(**(self.cfg.cameras[event["camera"]].speed or {}))

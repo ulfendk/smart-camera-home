@@ -12,6 +12,7 @@ cameras:
     ip: 192.0.2.10
     record: *dahua_main        # main stream: recorded
     detect: *dahua_sub         # sub stream: decoded for detection
+    recognize: true            # faces are big enough here to recognise (see faces:)
     zones:
       door: [0.6,0.4, 1,0.4, 1,1, 0.6,1]
     speed:                     # optional: vehicle speed between two lines across the road
@@ -119,6 +120,15 @@ go2rtc:
 
 web:
   port: 8971
+
+faces:                  # who it is: people from Home Assistant (family) plus people added in Settings -> People
+  enabled: false        # faces are learned from events ("Who is this?"); they stay on this machine
+  threshold: 0.45       # face similarity for a name
+  wait: 4               # working from home / armed home: hold a push this long, family is not pushed
+
+smoke:                  # Home Assistant smoke sensors: push a picture from inside, critical, with answer buttons
+  entities: []          # e.g. [binary_sensor.kitchen_smoke]
+  cameras: []           # joined into the picture; empty = every indoor camera
 
 wall:                   # every camera as one video (go2rtc stream "wall"), encoded only while watched
   enabled: true

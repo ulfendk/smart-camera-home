@@ -136,6 +136,21 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   (`ha.alarm_notify`, e.g. a household notify group). **Armed home** (e.g. at bedtime) ignores indoors and pushes
   only very suspicious activity outside (loitering, at the door, camera to camera), without setting anything
   off; a person on a chosen camera in the morning (e.g. the stairs after 05:00) or a set time disarms it.
+  Every alarm push has **Confirm alarm** and **False alarm** buttons. The answer replaces the push on every phone (with
+  who answered), is fired to Home Assistant as `smartcam_alarm_confirmed` / `smartcam_alarm_false` for your own
+  escalation, and shows in `sensor.smartcam_alarm_incident`; a false alarm switches the warning lights off and teaches
+  the camera spot.
+- Smoke alarm: with `smoke.entities` (Home Assistant smoke sensors), a sensor going off pushes the indoor cameras as one
+  picture, critical, to the alarm's notify services, with the same buttons, armed or not.
+- People: everyone in Home Assistant is on SmartCam's people list as family; add others in Settings → People (friends,
+  neighbours, grandparents). With `faces.enabled` and `recognize: true` on cameras where faces are big enough, SmartCam
+  looks for a face in full-resolution stills of each person: YuNet ([MIT](https://github.com/opencv/opencv_zoo)) finds
+  it and AuraFace ([Apache-2.0](https://huggingface.co/fal/AuraFace-v1), an ArcFace ResNet100) recognises it, on the
+  same GPU as detection. Faces are learned by naming an event ("Who is this?"). A name is carried to the next camera
+  when the clothes' colours match and nobody else fits ("Farmor? at forhave"), also backwards. Pushes say who it is,
+  Home Assistant gets a `smartcam_person` event, family is not pushed while working from home or armed home, and a
+  known person never stops an alarm (they are named in it). Faces stay on this machine; removing a person removes
+  theirs, and unnamed faces go with their events.
 
 ## Configuration
 
@@ -147,6 +162,8 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 | `mqtt` / `ha` | Home Assistant entities and push notifications |
 | `detect` | fps, hardware decoding, model |
 | `alarm` | alarm mode: trigger score, exit and entry delays, red/blue warning lights |
+| `smoke` | smoke sensors that push a picture from inside |
+| `faces` | person recognition: on/off, similarity threshold, how long a push waits for a name |
 | `record` | what stays on disk: a rolling buffer of everything (`continuous_hours`), event clips and snapshots (`event_days`), and a free-space guard (`min_free_gb`) |
 
 `${VAR}` and `${VAR:-default}` are filled in from the environment or `.env`.
@@ -186,6 +203,9 @@ smartcam/
   static_map.py    learned false-positive spots
   pipeline.py      per-camera motion -> detect -> track -> confirm
   events.py        events, suspicion score, snapshots, clips
+  faces.py         who it is: faces, and names carried from camera to camera
+  people.py        the people list and learned faces
+  smoke.py         smoke alarm pictures
   clips.py         clip cutting (stream copy)
   db.py            SQLite
   ha/              MQTT discovery and push notifications

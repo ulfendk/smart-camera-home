@@ -50,6 +50,7 @@ class CameraConfig(BaseModel):
     person_lights: list[str] = []     # HA lights to full while a person is here after dark
     record_at_home: bool = True       # False: no recording, events or snapshots unless armed away (privacy)
     onvif_port: int | None = None     # ONVIF device service port (time zone sync for non-Dahua cameras)
+    recognize: bool = False           # look for faces here (faces.py): only where faces are big enough
 
     @field_validator("zones", mode="before")
     @classmethod

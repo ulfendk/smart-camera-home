@@ -9,6 +9,7 @@ clips to be cut from them. What lasts are the events: their clips and snapshots 
 import asyncio
 import logging
 import shutil
+import sqlite3
 import time
 
 from .config import Config
@@ -36,7 +37,21 @@ def _remove_event(cfg: Config, db: Database, event: dict) -> None:
     for extra in (cfg.paths.data / "snapshots").glob(f"{event['id']}_*.jpg"):   # speed events' best shots
         extra.unlink(missing_ok=True)
     (cfg.paths.data / "snapshots" / f"{event['id']}.jpg").unlink(missing_ok=True)
+    _remove_faces(cfg, db, event["id"])
     db.delete_event(event["id"])
+
+
+def _remove_faces(cfg: Config, db: Database, event_id: int) -> None:
+    """The event's unnamed faces go with it; named ones are what SmartCam has learned, and stay."""
+    try:
+        with db.lock, db.conn:
+            crops = db.conn.execute("select crop from faces where event_id = ? and person is null", (event_id,)).fetchall()
+            db.conn.execute("delete from faces where event_id = ? and person is null", (event_id,))
+    except sqlite3.OperationalError:
+        return   # no faces table: recognition never ran
+    for (crop,) in crops:
+        if crop:
+            (cfg.paths.data / crop).unlink(missing_ok=True)
 
 
 def prune(cfg: Config, db: Database, now: float | None = None) -> tuple[int, int]:

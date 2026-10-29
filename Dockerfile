@@ -56,6 +56,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project -p 3.12
 COPY --from=models /models/*.onnx models/
+# Face recognition (faces.py): YuNet finds faces (MIT, OpenCV Zoo), AuraFace recognises them (Apache-2.0).
+ARG YUNET_REV=3cc26e7f1014a5ee5d74a42acee58bafc9d0a310 AURAFACE_REV=af6d057c9b0ec4071d4c49c80e3539258798b609
+RUN curl -fsSL -o models/yunet.onnx \
+        "https://huggingface.co/opencv/face_detection_yunet/resolve/${YUNET_REV}/face_detection_yunet_2023mar.onnx" \
+    && curl -fsSL -o models/auraface.onnx "https://huggingface.co/fal/AuraFace-v1/resolve/${AURAFACE_REV}/glintr100.onnx"
 COPY smartcam smartcam
 COPY config/smartcam.example.yml config/
 RUN uv sync --frozen --no-dev -p 3.12

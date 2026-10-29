@@ -37,6 +37,15 @@ class Wfh(BaseModel):
     wfh: bool
 
 
+class Person(BaseModel):
+    name: str
+    group: str = "other"
+
+
+class Naming(BaseModel):
+    name: str | None    # None: nobody on the list (forget these faces)
+
+
 class Review(BaseModel):
     review: str | None  # 'ok', 'false_positive' or null
 
@@ -54,10 +63,13 @@ class CollapseSlashes:
 
 
 def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.Event | None = None,
-               alarm=None, presence=None, doorbell=None, smoke=None) -> FastAPI:
+               alarm=None, presence=None, doorbell=None, smoke=None, people=None) -> FastAPI:
     app = FastAPI(title="SmartCam")
     app.add_middleware(CollapseSlashes)
-    for sub in ("recordings", "snapshots", "clips"):
+    if people is None:
+        from ..people import People
+        people = People(db)
+    for sub in ("recordings", "snapshots", "clips", "faces"):
         (cfg.paths.data / sub).mkdir(parents=True, exist_ok=True)
         app.mount(f"/media/{sub}", StaticFiles(directory=cfg.paths.data / sub), name=sub)
 
@@ -146,6 +158,47 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
         stamp = datetime.fromtimestamp(event["start_ts"]).strftime("%Y-%m-%d_%H-%M-%S")
         name = f"smartcam_{event['camera']}_{stamp}{'_closeup' if kind == 'crop' else ''}{path.suffix}"
         return FileResponse(path, filename=name)
+
+    @app.get("/api/people")
+    def get_people() -> list[dict]:
+        return people.all()
+
+    @app.post("/api/people")
+    def add_person(body: Person) -> list[dict]:
+        try:
+            people.add(body.name, body.group)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return people.all()
+
+    @app.delete("/api/people/{name}")
+    def remove_person(name: str) -> list[dict]:
+        try:
+            people.remove(name)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return people.all()
+
+    @app.delete("/api/people/{name}/faces")
+    def forget_faces(name: str) -> list[dict]:
+        people.forget(name)
+        return people.all()
+
+    @app.get("/api/events/{event_id}/faces")
+    def event_faces(event_id: int) -> list[dict]:
+        return [{**f, "url": f"media/{f['crop']}" if f["crop"] else None} for f in people.event_faces(event_id)]
+
+    @app.post("/api/events/{event_id}/person")
+    def name_event(event_id: int, body: Naming) -> dict:
+        """Who is this: files the event's faces under that person (this is how a face is learned)."""
+        if db.event(event_id) is None:
+            raise HTTPException(404)
+        try:
+            people.name_event(event_id, body.name)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        db.update_event(event_id, person=body.name, person_score=1.0 if body.name else None, person_via=None)
+        return db.event(event_id)
 
     @app.post("/api/events/{event_id}/review")
     def review(event_id: int, body: Review) -> dict:

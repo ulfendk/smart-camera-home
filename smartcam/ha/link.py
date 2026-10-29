@@ -41,9 +41,10 @@ def service_for(entity: str, on: bool) -> tuple[str, str]:
 
 
 class HaLink:
-    def __init__(self, cfg: Config, engine: EventEngine, alarm=None, smoke=None):
-        self.cfg, self.engine, self.alarm, self.smoke = cfg, engine, alarm, smoke
+    def __init__(self, cfg: Config, engine: EventEngine, alarm=None, smoke=None, people=None):
+        self.cfg, self.engine, self.alarm, self.smoke, self.people = cfg, engine, alarm, smoke, people
         self.users: dict[str, str] = {}   # Home Assistant user id -> the person's name, for "confirmed by"
+        self.persons: dict[str, str] = {}   # person.* -> name: the family, on SmartCam's people list
         self.alarm_entity, self.away_entity = cfg.ha.alarm_entity, cfg.ha.away_entity
         self.ws = None
         self.n = 0
@@ -95,9 +96,17 @@ class HaLink:
     async def _away_changed(self, away: bool) -> None:
         await self._set_ha(self.away_entity, away)
 
-    def _person(self, state: dict) -> None:
-        if state.get("entity_id", "").startswith("person.") and (uid := state.get("attributes", {}).get("user_id")):
-            self.users[uid] = state["attributes"].get("friendly_name") or state["entity_id"].split(".", 1)[1]
+    def _person(self, state: dict) -> bool:
+        """Remember a Home Assistant person. True if they are new."""
+        entity = state.get("entity_id", "")
+        if not entity.startswith("person."):
+            return False
+        name = state.get("attributes", {}).get("friendly_name") or entity.split(".", 1)[1]
+        if uid := state["attributes"].get("user_id"):
+            self.users[uid] = name
+        new = self.persons.get(entity) != name
+        self.persons[entity] = name
+        return new
 
     async def _event(self, event: dict) -> None:
         data = event.get("data", {})
@@ -110,7 +119,8 @@ class HaLink:
         entity, new = data.get("entity_id"), data.get("new_state")
         if not new:
             return
-        self._person(new)
+        if self._person(new) and self.people is not None:
+            self.people.sync_ha(self.persons)
         if entity in self.wanted:
             await self._apply(entity, is_on(new["state"]))
         if self.smoke is not None and entity in self.smoke.sc.entities and new["state"] == "on" \
@@ -135,10 +145,13 @@ class HaLink:
                     async for raw in ws:
                         msg = json.loads(raw)
                         if msg.get("id") == states_id and msg.get("type") == "result":
+                            self.persons = {}
                             for s in msg.get("result") or []:
                                 self._person(s)
                                 if s["entity_id"] in self.wanted:
                                     await self._apply(s["entity_id"], is_on(s["state"]))
+                            if self.people is not None and self.persons:
+                                self.people.sync_ha(self.persons)
                         elif msg.get("type") == "event":
                             await self._event(msg["event"])
             except (OSError, websockets.WebSocketException, ConnectionError) as e:

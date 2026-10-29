@@ -34,7 +34,8 @@ class Database:
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
-        for column, kind in (("speed", "real"), ("crop", "text"), ("plate", "text"), ("plate_conf", "real"), ("box", "text")):   # added later
+        for column, kind in (("speed", "real"), ("crop", "text"), ("plate", "text"), ("plate_conf", "real"), ("box", "text"),
+                             ("person", "text"), ("person_score", "real"), ("person_via", "text"), ("face", "text")):   # added later
             try:
                 self.conn.execute(f"alter table events add column {column} {kind}")
             except sqlite3.OperationalError:
@@ -83,6 +84,8 @@ class Database:
             args += self.VEHICLES
         elif kind == "doorbell":
             sql += " and label = 'doorbell'"
+        elif kind == "smoke":
+            sql += " and label = 'smoke'"
         elif kind == "notified":
             sql += " and notified = 1"
         if since is not None:

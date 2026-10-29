@@ -103,3 +103,22 @@ def test_wfh_switch():
     assert c.get("/api/wfh").json() == {"wfh": False}
     assert c.put("/api/wfh", json={"wfh": True}).json() == {"wfh": True}
     assert c.get("/api/wfh").json() == {"wfh": True}
+
+
+def test_people_and_naming_an_events_face():
+    import numpy as np
+    from smartcam.people import People
+    cfg = load_config(TEST_CONFIG)
+    cfg.paths.data = Path(tempfile.mkdtemp())
+    db = Database(cfg.paths.data / "t.db")
+    people = People(db)
+    c = TestClient(create_app(cfg, db, EventEngine(cfg, db, RulesConfig()), people=people))
+    assert c.post("/api/people", json={"name": "Farmor", "group": "friend"}).json()[0]["name"] == "Farmor"
+    assert c.post("/api/people", json={"name": "X", "group": "boss"}).status_code == 400
+    ev = db.insert_event(camera="front_door", label="person", start_ts=1.0, max_score=0.9)
+    people.add_face(ev, np.ones(512, np.float32) / np.sqrt(512), "faces/1_1.jpg", 1.0)
+    assert c.get(f"/api/events/{ev}/faces").json()[0]["url"] == "media/faces/1_1.jpg"
+    assert c.post(f"/api/events/{ev}/person", json={"name": "Farmor"}).json()["person"] == "Farmor"
+    assert c.get("/api/people").json()[0]["faces"] == 1
+    assert c.post(f"/api/events/{ev}/person", json={"name": "Nobody"}).status_code == 400
+    assert c.delete("/api/people/Farmor").json() == []

@@ -46,6 +46,8 @@
   }
   .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
   figure, .card { margin: 0; background: var(--card); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  figcaption img.face { width: 40px; height: 48px; object-fit: cover; border-radius: 6px; }
+  .who { color: var(--primary); }
   figcaption { padding: 8px 12px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: center; }
   small, .muted { color: var(--muted); }
   iframe, figure img, figure video { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #000; object-fit: contain; }
@@ -163,7 +165,7 @@
     <button class="chip" id="wall-close">Close</button>
   </div>
   <div id="event-filters" class="filters" hidden>
-    <select id="f-kind"><option value="">All events</option><option value="person">People</option><option value="vehicle">Vehicles</option><option value="doorbell">Doorbell</option><option value="notified">Notified only</option></select>
+    <select id="f-kind"><option value="">All events</option><option value="person">People</option><option value="vehicle">Vehicles</option><option value="doorbell">Doorbell</option><option value="smoke">Smoke</option><option value="notified">Notified only</option></select>
     <select id="f-camera"><option value="">All cameras</option></select>
     <select id="f-time"><option value="">Any time</option><option value="1h">Last hour</option><option value="today">Today</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option><option value="day">Pick a day…</option></select>
     <input type="date" id="f-day" hidden>
@@ -406,8 +408,13 @@ function eventQuery() {
 }
 for (const id of ["f-kind", "f-camera", "f-time", "f-day"]) $(id).onchange = () => loadEvents();
 
+let PEOPLE = [];
+async function nameEvent(id, name) {
+  await fetch(`api/events/${id}/person`, json("POST", {name: name || null}));
+}
 async function loadEvents() {
   const events = await (await fetch("api/events?" + eventQuery())).json();
+  PEOPLE = await (await fetch("api/people")).json().catch(() => []);
   $("events").replaceChildren();
   $("status").textContent = events.length ? "" : "No events match.";
   for (const e of events) {
@@ -418,12 +425,15 @@ async function loadEvents() {
     const dur = e.end_ts ? `${Math.round(e.end_ts - e.start_ts)}s` : "ongoing";
     fig.innerHTML = `${media}
       <figcaption>
-        <span><b>${esc(e.camera)}</b> ${esc(e.label)}${e.speed != null ? ` <b>${Math.round(e.speed)} km/h</b>` : ""}${e.plate ? ` <code>${esc(e.plate)}</code>` : ""} <small>${fmt(e.start_ts)} · ${dur}</small></span>
+        <span><b>${esc(e.camera)}</b> ${e.person ? `<b class="who" title="${e.person_via ? "carried from " + esc(e.person_via) : "face"}">${esc(e.person)}${e.person_via ? "?" : ""}</b>` : esc(e.label)}${e.speed != null ? ` <b>${Math.round(e.speed)} km/h</b>` : ""}${e.plate ? ` <code>${esc(e.plate)}</code>` : ""} <small>${fmt(e.start_ts)} · ${dur}</small></span>
         <span class="score ${e.score >= 4 ? "high" : ""}" title="${esc(e.reasons.join(", "))}">score ${e.score}${e.notified ? " · notified" : ""}</span>
       </figcaption>
       <figcaption><small>${esc(e.reasons.join(" · "))}</small>
         <span><button class="chip" data-value="ok">Correct</button> <button class="chip" data-value="false_positive">False alarm</button></span>
       </figcaption>
+      ${e.face ? `<figcaption><span style="display:flex;align-items:center;gap:8px"><img class="face" src="media/${e.face}" alt="face">
+        <select data-act="who" aria-label="Who is this?"><option value="">Who is this?</option>${PEOPLE.map(p =>
+          `<option ${p.name === e.person && !e.person_via ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></span></figcaption>` : ""}
       <figcaption class="downloads">
         <span>${e.crop ? `<button class="chip" data-act="closeup" aria-pressed="false">Close-up</button>` : ""}</span>
         <span>${dl("snapshot", "⤓ Picture")}${e.crop ? " " + dl("crop", "⤓ Close-up") : ""}${e.clip ? " " + dl("clip", "⤓ Video") : ""}</span>
@@ -437,6 +447,8 @@ async function loadEvents() {
       el.replaceWith(Object.assign(document.createElement("div"), {innerHTML: on
         ? `<img src="media/${e.crop}" alt="vehicle close-up">` : media}).firstElementChild);
     };
+    const who = fig.querySelector('[data-act="who"]');
+    if (who) who.onchange = () => nameEvent(e.id, who.value);
     for (const b of fig.querySelectorAll("[data-value]")) {
       b.setAttribute("aria-pressed", b.dataset.value === e.review);
       b.onclick = () => review(e.id, b.getAttribute("aria-pressed") === "true" ? null : b.dataset.value, fig);
@@ -538,6 +550,11 @@ const SECTIONS = [
     ["doorbell.title", "Title", "text", "Doorbell"],
     ["doorbell.message", "Message", "text", "Someone is at the door"],
   ]},
+  {title: "People", desc: "Who SmartCam can name. Everyone in Home Assistant is family and always here; add others (grandparents, the neighbour who feeds the cat). Faces are learned from events: pick a name under an event's face (\"Who is this?\"). A name found on one camera is carried to the next one if the clothes match. Family is not pushed while working from home or armed home; a known person never stops an alarm, but is named in it. Faces stay on this machine; removing a person removes theirs. Switch recognition on per camera (Cameras → Recognise faces) where faces are big enough, e.g. at the front door.", people: true, fields: [
+    ["faces.enabled", "Recognise people", "bool", false, "loads the face models (YuNet + AuraFace) on start"],
+    ["faces.threshold", "Same face from", "number", 0.45, "similarity 0..1; higher: fewer but surer names"],
+    ["faces.wait", "Wait for the name (s)", "number", 4, "working from home / armed home: hold a push this long to see if it is family"],
+  ]},
   {title: "Smoke alarm", desc: "When a Home Assistant smoke sensor goes off, the indoor cameras are joined into one picture and pushed as an alarm (critical, to the alarm notify services), with Confirm alarm / False alarm buttons. Works armed or not.", smoke: true, fields: [
     ["smoke.entities", "Smoke sensors", "list", [], "e.g. binary_sensor.kitchen_smoke, comma-separated"],
     ["smoke.cameras", "Cameras", "list", [], "joined into the picture; empty = every indoor camera"],
@@ -554,6 +571,7 @@ const SECTIONS = [
 
 const CAMERA_FIELDS = [
   ["location", "Location", "select", "outdoor", "indoor people while away score the maximum", ["outdoor", "indoor"]],
+  ["recognize", "Recognise faces", "bool", false, "where faces are big enough (a door, a terrace); needs People → Recognise people"],
   ["vendor", "Vendor", "select", "generic", "dahua enables the white light and reboots", ["generic", "dahua"]],
   ["ip", "IP address", "text", ""],
   ["record", "Recording stream", "text", "", "main stream, e.g. rtsp://${CAM_USER}:${CAM_PASS}@{ip}:554/live", null, true],
@@ -683,6 +701,25 @@ function renderSettings() {
         const r = await fetch("api/doorbell", {method: "POST"}); row.querySelector("small").textContent = r.ok ? "Sent." : "Not set up (save and restart first).";
       };
       card.appendChild(row);
+    }
+    if (s.people) {
+      const box = document.createElement("div");
+      box.className = "row";
+      box.style.cssText = "flex-direction:column;align-items:stretch";
+      const render = list => {
+        box.innerHTML = `<div class="people">${list.map(p => `<div class="row" style="padding:4px 0"><span><b>${esc(p.name)}</b> <small class="muted">${esc(p.group)} · ${p.faces} face${p.faces === 1 ? "" : "s"}${p.source === "ha" ? " · Home Assistant" : ""}</small></span>
+            <span>${p.faces ? `<button class="chip" data-forget="${esc(p.name)}">Forget faces</button>` : ""}${p.source === "ha" ? "" : ` <button class="chip" data-remove="${esc(p.name)}">Remove</button>`}</span></div>`).join("")}</div>
+          <div class="row" style="padding:8px 0"><label class="field"><span>Name</span><input data-new="name" placeholder="e.g. Farmor"></label>
+            <label class="field"><span>Group</span><select data-new="group"><option>friend</option><option>family</option><option>neighbour</option><option>other</option></select></label>
+            <button class="btn outlined" data-add>Add person</button></div>`;
+        const call = async (url, opts) => { const r = await fetch(url, opts); if (r.ok) render(await r.json()); };
+        for (const b of box.querySelectorAll("[data-remove]")) b.onclick = () => call(`api/people/${encodeURIComponent(b.dataset.remove)}`, {method: "DELETE"});
+        for (const b of box.querySelectorAll("[data-forget]")) b.onclick = () => call(`api/people/${encodeURIComponent(b.dataset.forget)}/faces`, {method: "DELETE"});
+        box.querySelector("[data-add]").onclick = () => call("api/people", json("POST", {
+          name: box.querySelector('[data-new="name"]').value, group: box.querySelector('[data-new="group"]').value}));
+      };
+      fetch("api/people").then(r => r.json()).then(render);
+      card.appendChild(box);
     }
     if (s.smoke) {
       const row = document.createElement("div");
