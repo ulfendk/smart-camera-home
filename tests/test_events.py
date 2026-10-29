@@ -158,3 +158,13 @@ def test_working_from_home_only_pushes_people_arriving_after_it_is_switched_on()
         await engine.set_away(True)                     # leaving: nobody is working from home
         assert not engine.wfh
     asyncio.run(go())
+
+
+def test_every_section_of_the_config_file_is_read(tmp_path):
+    import yaml
+    raw = yaml.safe_load(TEST_CONFIG.read_text())
+    raw.update(faces={"enabled": True}, smoke={"entities": ["binary_sensor.s"]}, wall={"enabled": False})
+    path = tmp_path / "c.yml"
+    path.write_text(yaml.safe_dump(raw))
+    cfg = load_config(path)
+    assert cfg.faces == {"enabled": True} and cfg.smoke["entities"] == ["binary_sensor.s"] and cfg.wall == {"enabled": False}
