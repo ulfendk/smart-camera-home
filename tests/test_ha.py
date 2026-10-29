@@ -70,3 +70,28 @@ def test_alarm_push_is_time_sensitive_or_critical_with_its_own_image():
     p = alarm_payload(cfg, "test", None)
     assert p["data"]["push"]["interruption-level"] == "critical" and p["data"]["push"]["sound"]["critical"] == 1
     assert "entity_id" not in p["data"]
+
+
+def test_alarm_push_goes_to_alarm_notify_and_alerts_to_notify():
+    import asyncio
+    from smartcam.ha.notify import HaNotifier
+    cfg = load_config(TEST_CONFIG)
+    cfg.ha.notify, cfg.ha.alarm_notify = ["mobile_app_me"], ["household"]
+    sent = []
+
+    class Http:
+        async def post(self, url, json):
+            sent.append(url.rsplit("/", 1)[1])
+            return type("R", (), {"raise_for_status": lambda self: None})()
+
+    class Engine:
+        on_alert, on_clip, on_speed = [], [], []
+
+    n = HaNotifier(cfg, Engine())
+    n.http = Http()
+    asyncio.run(n.alarm("indoor while away", None))
+    asyncio.run(n.alert({"id": 1, "camera": "front_door", "label": "person", "reasons": ["person"]}))
+    assert sent == ["household", "mobile_app_me"]
+    cfg.ha.alarm_notify = []
+    asyncio.run(n.alarm("test", None))
+    assert sent[-1] == "mobile_app_me"

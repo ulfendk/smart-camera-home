@@ -78,6 +78,7 @@ class HaConfig(BaseModel):
     url: str = ""
     token: str = ""
     notify: list[str] = []          # notify services, e.g. mobile_app_my_phone
+    alarm_notify: list[str] = []    # notify services for the alarm push (e.g. a household group); empty: notify
     event_url: str | None = None    # link opened from a notification; {id} is replaced by the event id
     smartcam_host: str | None = None   # this machine's address as Home Assistant sees it (for HA cameras)
     alarm_critical: bool = True     # alarm pushes as critical alerts: sound even in silent mode / Focus

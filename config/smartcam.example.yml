@@ -53,6 +53,7 @@ ha:
   url: ${HA_URL}
   token: ${HA_TOKEN}    # long-lived access token (HA profile -> Security)
   notify: []            # e.g. [mobile_app_my_phone]
+  alarm_notify: []      # the alarm push, e.g. [household] (a notify group); empty: notify
   event_url: null
 
 lights:

@@ -132,7 +132,8 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   a serious event while armed (by default a person indoors, or loitering at a door at night) flashes
   the Dahua red/blue warning lights for 15 minutes, then stays quiet until disarmed and armed again.
   Arming has an exit delay (60 s) and a trigger an entry delay (30 s, "pending") in which disarming cancels it;
-  only activity that starts after arming counts. **Armed home** (e.g. at bedtime) ignores indoors and pushes
+  only activity that starts after arming counts. The alarm push can go to other services than the everyday alerts
+  (`ha.alarm_notify`, e.g. a household notify group). **Armed home** (e.g. at bedtime) ignores indoors and pushes
   only very suspicious activity outside (loitering, at the door, camera to camera), without setting anything
   off; a person on a chosen camera in the morning (e.g. the stairs after 05:00) or a set time disarms it.
 

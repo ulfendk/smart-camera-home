@@ -61,8 +61,8 @@ class HaNotifier:
             alarm.on_trigger.append(self.alarm)
         engine.on_speed.append(self.speed)
 
-    async def _send(self, payload: dict) -> None:
-        for service in self.cfg.ha.notify:
+    async def _send(self, payload: dict, services: list[str] | None = None) -> None:
+        for service in services or self.cfg.ha.notify:
             r = await self.http.post(f"/api/services/notify/{service}", json=payload)
             r.raise_for_status()
 
@@ -82,7 +82,7 @@ class HaNotifier:
         await self._send(p)
 
     async def alarm(self, why: str, event: dict | None) -> None:
-        await self._send(alarm_payload(self.cfg, why, event))
+        await self._send(alarm_payload(self.cfg, why, event), self.cfg.ha.alarm_notify)
         log.info("alarm notification sent")
 
     async def clip(self, event: dict) -> None:
