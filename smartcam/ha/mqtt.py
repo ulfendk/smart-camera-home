@@ -2,6 +2,7 @@
 
 Entities:
 - switch.smartcam_away                  away mode (also settable from the smartcam UI)
+- switch.smartcam_wfh                   working from home: every person outside is pushed
 - binary_sensor.smartcam_<camera>_person on while a confirmed person event is open on that camera
 - camera.smartcam_<camera>_snapshot     latest event snapshot; notifications use it as their image,
                                         so it loads through HA even when the phone is not at home
@@ -31,7 +32,10 @@ def discovery_messages(cfg: Config) -> list[tuple[str, dict]]:
     avail = {"availability_topic": f"{p}/available"}
     msgs = [(f"{d}/switch/smartcam/away/config", {
         "name": "Away", "unique_id": "smartcam_away", "default_entity_id": "switch.smartcam_away", "icon": "mdi:home-export-outline",
-        "state_topic": f"{p}/away/state", "command_topic": f"{p}/away/set", "device": device, **avail})]
+        "state_topic": f"{p}/away/state", "command_topic": f"{p}/away/set", "device": device, **avail}),
+        (f"{d}/switch/smartcam/wfh/config", {
+        "name": "Working from home", "unique_id": "smartcam_wfh", "default_entity_id": "switch.smartcam_wfh", "icon": "mdi:laptop",
+        "state_topic": f"{p}/wfh/state", "command_topic": f"{p}/wfh/set", "device": device, **avail})]
     for name in cfg.cameras:
         msgs.append((f"{d}/binary_sensor/smartcam/{name}_person/config", {
             "name": f"{name} person", "unique_id": f"smartcam_{name}_person", "default_entity_id": f"binary_sensor.smartcam_{name}_person",
@@ -77,6 +81,7 @@ class HaMqtt:
         engine.on_alert.insert(0, self._publish_alert_image)
         engine.on_clip.insert(0, self._publish_alert_image)
         engine.on_away.append(self._publish_away)
+        engine.on_wfh.append(self._publish_wfh)
         engine.on_occupancy.append(self._publish_occupancy)
         engine.on_speed.insert(0, self._publish_speed)   # before the notifier, which shows its image
         if alarm is not None:
@@ -94,10 +99,12 @@ class HaMqtt:
                         await client.publish(topic, json.dumps(payload), retain=True)
                     await client.publish(f"{p}/available", "online", retain=True)
                     await self._publish_away(self.engine.away)
+                    await self._publish_wfh(self.engine.wfh)
                     for name in self.cfg.cameras:
                         await client.publish(f"{p}/{name}/person", "OFF", retain=True)
                         await client.publish(f"{p}/{name}/occupied", "OFF", retain=True)
                     await client.subscribe(f"{p}/away/set")
+                    await client.subscribe(f"{p}/wfh/set")
                     if self.alarm is not None:
                         await self._publish_alarm(self.alarm.state)
                         await client.subscribe(f"{p}/alarm/set")
@@ -106,7 +113,9 @@ class HaMqtt:
                         payload = msg.payload.decode()
                         if msg.topic.matches(f"{p}/alarm/set") and self.alarm is not None:
                             await self.alarm.command(payload)
-                        else:
+                        elif msg.topic.matches(f"{p}/wfh/set"):
+                            await self.engine.set_wfh(payload.upper() == "ON")
+                        elif msg.topic.matches(f"{p}/away/set"):
                             await self.engine.set_away(payload.upper() == "ON")
             except aiomqtt.MqttError as e:
                 self.client = None
@@ -133,6 +142,9 @@ class HaMqtt:
 
     async def _publish_away(self, away: bool) -> None:
         await self._publish("away/state", "ON" if away else "OFF")
+
+    async def _publish_wfh(self, on: bool) -> None:
+        await self._publish("wfh/state", "ON" if on else "OFF")
 
     async def _event_open(self, event: dict) -> None:
         self.open_events[event["camera"]].add(event["id"])

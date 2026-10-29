@@ -65,8 +65,10 @@ def is_night(ts: float, rules: RulesConfig) -> bool:
 
 
 def score_event(ev: OpenEvent, now: float, away: bool, rules: RulesConfig,
-                recent_other: list[str], home_armed: bool = False) -> tuple[float, list[str]]:
+                recent_other: list[str], home_armed: bool = False, wfh: bool = False) -> tuple[float, list[str]]:
     score, reasons = 1.0, ["person"]
+    if wfh and not away and ev.location == "outdoor":
+        reasons.append("working from home")
     if away:
         if ev.location == "indoor":
             return 10.0, ["person indoors while away"]
@@ -92,7 +94,10 @@ def score_event(ev: OpenEvent, now: float, away: bool, rules: RulesConfig,
     return score, reasons
 
 
-def should_notify(ev: OpenEvent, away: bool, now: float, rules: RulesConfig, home_armed: bool = False) -> bool:
+def should_notify(ev: OpenEvent, away: bool, now: float, rules: RulesConfig, home_armed: bool = False,
+                  wfh: bool = False) -> bool:
+    if wfh and ev.location == "outdoor":
+        return True    # working from home: every person outside on the property
     if ev.score < rules.notify_score:
         return False
     # At home indoor events are family. Outdoors: at night, or at any time when armed at home.
@@ -119,6 +124,7 @@ class EventEngine:
         self.on_alert: list[Notifier] = []
         self.on_clip: list[Notifier] = []
         self.on_away: list[Callable[[bool], Awaitable[None]]] = []
+        self.on_wfh: list[Callable[[bool], Awaitable[None]]] = []
         self.on_score: list[Callable[[OpenEvent], Awaitable[None]]] = []   # when an event's score rises
         self.on_speed: list[Notifier] = []   # a vehicle speed event, once its best shot is in
         self.detector = None                 # set by detection; finds the vehicle in the recording
@@ -145,6 +151,21 @@ class EventEngine:
         log.info("armed at home %s", "on" if armed else "off")
 
     @property
+    def wfh(self) -> bool:
+        return self.db.get_setting("wfh", "0") == "1"
+
+    async def set_wfh(self, on: bool) -> None:
+        self.db.set_setting("wfh", "1" if on else "0")
+        if on:
+            self.db.set_setting("away_since", str(time.time()))   # only people arriving from now on are pushed
+        log.info("working from home %s", "on" if on else "off")
+        for cb in self.on_wfh:
+            try:
+                await cb(on)
+            except Exception:
+                log.exception("wfh callback failed")
+
+    @property
     def away_since(self) -> float:
         return float(self.db.get_setting("away_since", "0"))
 
@@ -153,6 +174,8 @@ class EventEngine:
         if away:
             self.db.set_setting("away_since", str(time.time()))
         log.info("away mode %s", "on" if away else "off")
+        if away and self.wfh:
+            await self.set_wfh(False)    # nobody is home to work there
         for cb in self.on_away:
             try:
                 await cb(away)
@@ -238,8 +261,8 @@ class EventEngine:
         self.recent_starts = [(ts, c) for ts, c in self.recent_starts if ts >= now - 3600]
         others = sorted({c for ts, c in self.recent_starts if c != ev.camera and cutoff <= ts <= ev.start})
         before = ev.score
-        home = self.home_armed
-        ev.score, ev.reasons = score_event(ev, now, self.away, self.rules, others, home_armed=home)
+        home, wfh = self.home_armed, self.wfh
+        ev.score, ev.reasons = score_event(ev, now, self.away, self.rules, others, home_armed=home, wfh=wfh)
         if ev.score > before:
             for cb in self.on_score:
                 try:
@@ -249,8 +272,8 @@ class EventEngine:
         self.db.update_event(ev.id, score=ev.score, reasons=ev.reasons, zones=sorted(ev.zone_dwell),
                              max_score=ev.best_score)
         # While away, only activity that started after away mode began is news (not the people leaving).
-        fresh = not (self.away or home) or ev.start >= self.away_since
-        if not ev.notified and fresh and should_notify(ev, self.away, now, self.rules, home_armed=home):
+        fresh = not (self.away or home or wfh) or ev.start >= self.away_since
+        if not ev.notified and fresh and should_notify(ev, self.away, now, self.rules, home_armed=home, wfh=wfh):
             ev.notified = True
             self.db.update_event(ev.id, notified=1)
             event = self.db.event(ev.id)

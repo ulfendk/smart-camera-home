@@ -128,3 +128,33 @@ def test_reappearing_person_continues_the_event_and_closes_after_gap():
         await engine.handle(res(5.0, confirmed=[c], tracks=[c]))
         assert len(db.events()) == 2
     asyncio.run(go())
+
+
+def test_working_from_home_pushes_every_person_outside():
+    e = scored(ev(), NOON, away=False)
+    assert e.score == 1 and should_notify(e, False, NOON, RULES, wfh=True)
+    assert not should_notify(scored(ev("indoor"), NOON, away=False), False, NOON, RULES, wfh=True)
+    e.score, e.reasons = score_event(e, NOON, False, RULES, [], wfh=True)
+    assert "working from home" in e.reasons and e.score == 1
+
+
+def test_working_from_home_only_pushes_people_arriving_after_it_is_switched_on():
+    async def go():
+        engine, db = make_engine(merge_gap=0.5)
+        pushed = []
+        engine.on_alert.append(lambda e: asyncio.sleep(0, pushed.append(e["id"])))
+        now = __import__("time").time()
+        early = track(1, now - 60)                      # already in the garden before WFH went on
+        await engine.set_wfh(True)
+        frame = lambda ts, t: FrameResult(Frame("front_door", ts, np.zeros((36, 64, 3), np.uint8)),
+                                                    MotionResult(np.zeros((9, 16), np.uint8), 0), [], [t], [t], [])
+        await engine.handle(frame(now - 60, early))
+        assert pushed == []
+        await engine.handle(FrameResult(Frame("front_door", now - 59, np.zeros((36, 64, 3), np.uint8)),
+                                        MotionResult(np.zeros((9, 16), np.uint8), 0), [], [], [], [early]))
+        late = track(2, now + 120)                      # a new visitor, long after
+        await engine.handle(frame(now + 120, late))
+        assert len(pushed) == 1
+        await engine.set_away(True)                     # leaving: nobody is working from home
+        assert not engine.wfh
+    asyncio.run(go())

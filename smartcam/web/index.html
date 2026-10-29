@@ -25,6 +25,7 @@
   nav button { font: inherit; font-weight: 500; padding: 8px 14px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
   nav button[aria-pressed="true"] { color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
   .away { margin-left: auto; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: var(--muted); font-weight: 500; }
+  .away + .away { margin-left: 0; }
   .alarm { font: inherit; font-weight: 500; padding: 6px 14px; border-radius: 16px; border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; }
   .alarm[data-state="armed_away"], .alarm[data-state="arming"] { color: #fff; background: var(--primary); border-color: var(--primary); }
   .alarm[data-state="pending"] { color: #fff; background: var(--warn); border-color: var(--warn); }
@@ -144,6 +145,7 @@
     <button id="tab-events" aria-pressed="false">Events</button>
     <button id="tab-settings" aria-pressed="false">Settings</button>
   </nav>
+  <div class="away" id="wfh" role="switch" aria-checked="false" tabindex="0" title="Working from home: push every person outside, day and night"><span>WFH</span><span class="switch"></span></div>
   <div class="away" id="away" role="switch" aria-checked="false" tabindex="0"><span id="away-label">Home</span><span class="switch"></span></div>
   <span style="position:relative"><button class="alarm" id="alarm" hidden title="Arm or disarm the alarm">Alarm off</button>
     <span class="arm-menu" id="arm-menu" hidden><button class="chip" data-cmd="arm_away">Arm away</button><button class="chip" data-cmd="arm_home">Arm home</button></span></span>
@@ -195,6 +197,8 @@ async function loadAway() {
   const {away} = await (await fetch("api/away")).json();
   $("away").setAttribute("aria-checked", away);
   $("away-label").textContent = away ? "Away" : "Home";
+  const {wfh} = await (await fetch("api/wfh")).json();
+  $("wfh").setAttribute("aria-checked", wfh);
 }
 async function toggleAway() {
   await fetch("api/away", json("PUT", {away: $("away").getAttribute("aria-checked") !== "true"}));
@@ -202,6 +206,12 @@ async function toggleAway() {
 }
 $("away").onclick = toggleAway;
 $("away").onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleAway(); } };
+async function toggleWfh() {
+  await fetch("api/wfh", json("PUT", {wfh: $("wfh").getAttribute("aria-checked") !== "true"}));
+  loadAway();
+}
+$("wfh").onclick = toggleWfh;
+$("wfh").onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleWfh(); } };
 
 // --- alarm -----------------------------------------------------------------------------------------
 const ALARM_LABEL = {disarmed: "Alarm off", arming: "Arming…", armed_away: "Armed away", armed_home: "Armed home", pending: "Disarm now!", triggered: "ALARM"};
@@ -432,7 +442,7 @@ let config = null, unsaved = false, status = {cls: "msg muted", text: ""};
 const openEditors = new Set();   // cameras whose zone editor is open, kept across re-renders
 
 const SECTIONS = [
-  {title: "Alerts", desc: "When an event becomes a push notification. A confirmed person scores 1; away mode, night, loitering, door zones and a person on another camera just before add to it.", fields: [
+  {title: "Alerts", desc: "When an event becomes a push notification. A confirmed person scores 1; away mode, night, loitering, door zones and a person on another camera just before add to it. Working from home (WFH at the top, switch.smartcam_wfh) pushes every person outside, whatever the score.", fields: [
     ["rules.notify_score", "Notify at score", "number", 4, "push notifications from this score"],
     ["rules.loiter_seconds", "Loitering after (s)", "number", 30, "time in a zone that counts as loitering"],
     ["rules.door_zones", "Door zones", "list", [], "zone names that count as a door, comma-separated"],

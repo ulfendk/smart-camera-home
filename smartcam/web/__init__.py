@@ -33,6 +33,10 @@ class Away(BaseModel):
     away: bool
 
 
+class Wfh(BaseModel):
+    wfh: bool
+
+
 class Review(BaseModel):
     review: str | None  # 'ok', 'false_positive' or null
 
@@ -161,6 +165,15 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
     async def put_away(body: Away) -> Away:
         await engine.set_away(body.away)
         return Away(away=engine.away)
+
+    @app.get("/api/wfh")
+    def get_wfh() -> Wfh:
+        return Wfh(wfh=engine.wfh)
+
+    @app.put("/api/wfh")
+    async def put_wfh(body: Wfh) -> Wfh:
+        await engine.set_wfh(body.wfh)
+        return Wfh(wfh=engine.wfh)
 
     @app.get("/api/alarm")
     def get_alarm() -> dict:

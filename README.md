@@ -109,6 +109,9 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   Assistant's light history into SmartCam's own library (so it outlives the recorder). Hand-switched lights
   are left alone; on disarm only its own lights are switched off. Settings → Presence simulation previews
   today's plan.
+- Working from home: `switch.smartcam_wfh` in Home Assistant (or WFH at the top of the UI) pushes every person an
+  outdoor camera sees, day or night, whatever the score; person masks keep the street out. Only people arriving
+  after it is switched on count, and going away switches it off.
 - Privacy at home: cameras with `record_at_home: false` (e.g. indoors) record nothing and store no events while
   you're home; they record again when armed away. Every camera still reports room occupancy,
   `binary_sensor.smartcam_<camera>_occupied`, for Home Assistant's lights (people sitting still included,
@@ -154,7 +157,8 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 - being in a door zone adds 1
 - a person on another camera just before adds 1
 
-At 4 or more a push is sent. While away, any person pushes; at home only outdoor events at night do.
+At 4 or more a push is sent. While away, any person pushes; at home only outdoor events at night do,
+or any outdoor person while working from home.
 
 ## Regression testing against Frigate
 

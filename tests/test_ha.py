@@ -11,7 +11,8 @@ def test_discovery_covers_away_and_every_camera():
     cfg = load_config(TEST_CONFIG)
     topics = [t for t, _ in discovery_messages(cfg)]
     assert f"{cfg.mqtt.discovery_prefix}/switch/smartcam/away/config" in topics
-    assert len(topics) == 2 + 3 * len(cfg.cameras) + cfg.mqtt.alert_slots   # away, alarm, per camera, slots
+    assert f"{cfg.mqtt.discovery_prefix}/switch/smartcam/wfh/config" in topics
+    assert len(topics) == 3 + 3 * len(cfg.cameras) + cfg.mqtt.alert_slots   # away, wfh, alarm, per camera, slots
     ids = [p["unique_id"] for _, p in discovery_messages(cfg)]
     assert len(ids) == len(set(ids))
 

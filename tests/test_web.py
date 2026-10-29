@@ -96,3 +96,10 @@ def test_false_alarm_makes_its_spot_hot_and_taking_it_back_cools_it():
     c.post(f"/api/events/{ev}/review", json={"review": "false_positive"})   # again: no extra heat
     c.post(f"/api/events/{ev}/review", json={"review": "ok"})
     assert not sm.is_hot(trunk, 1_700_000_100)
+
+
+def test_wfh_switch():
+    c = client()
+    assert c.get("/api/wfh").json() == {"wfh": False}
+    assert c.put("/api/wfh", json={"wfh": True}).json() == {"wfh": True}
+    assert c.get("/api/wfh").json() == {"wfh": True}
