@@ -140,8 +140,8 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   who answered), is fired to Home Assistant as `smartcam_alarm_confirmed` / `smartcam_alarm_false` for your own
   escalation, and shows in `sensor.smartcam_alarm_incident`; a false alarm switches the warning lights off and teaches
   the camera spot. With `escalation.enabled`, a confirmed alarm turns every light (or the ones you choose) to full and
-  plays a siren on your speakers (SmartCam's own sound, through `media_player.play_media`); the lights are saved as a
-  Home Assistant scene and the Sonos speakers snapshotted first, and "Stop siren and lights" on the next push,
+  plays a siren on your speakers (SmartCam's own sound, through `media_player.play_media`); each light's state
+  (brightness, colour) is saved and the Sonos speakers snapshotted first, and "Stop siren and lights" on the next push,
   disarming or the time running out puts both back.
 - Smoke alarm: with `smoke.entities` (Home Assistant smoke sensors), a sensor going off pushes the indoor cameras as one
   picture, critical, to the alarm's notify services, with the same buttons, armed or not.

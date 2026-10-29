@@ -22,8 +22,12 @@ class FakeHa:
         return type("R", (), {"raise_for_status": lambda self: None})()
 
     async def get(self, url):
-        states = [{"entity_id": "light.hall", "state": "off"}, {"entity_id": "light.kitchen", "state": "on"},
-                  {"entity_id": "light.gone", "state": "unavailable"}, {"entity_id": "switch.x", "state": "on"}]
+        states = [{"entity_id": "light.hall", "state": "off", "attributes": {}},
+                  {"entity_id": "light.kitchen", "state": "on",
+                   "attributes": {"brightness": 77, "color_mode": "color_temp", "color_temp_kelvin": 2700}},
+                  {"entity_id": "light.gone", "state": "unavailable", "attributes": {}},
+                  {"entity_id": "light.all_downstairs", "state": "on", "attributes": {"entity_id": ["light.kitchen"]}},
+                  {"entity_id": "switch.x", "state": "on", "attributes": {}}]
         return type("R", (), {"raise_for_status": lambda self: None, "json": lambda self: states})()
 
     def services(self):
@@ -52,16 +56,19 @@ def test_confirming_turns_every_light_up_and_plays_the_siren_then_stop_puts_it_b
         incident = await alarm.alert("intrusion", "living_room: indoor while away")
         await alarm.respond(f"SMARTCAM_CONFIRM_{incident['id']}", "Regin")
         await asyncio.sleep(0.05)
-        s = ha.services()
-        assert s[:2] == ["scene.create", "light.turn_on"]
-        assert ha.calls[0][1]["snapshot_entities"] == ["light.hall", "light.kitchen"]   # not the unavailable one
-        assert ha.calls[1][1] == {"entity_id": "all", "brightness_pct": 100}
+        ups = [c[1]["entity_id"] for c in ha.calls if c[0] == "light.turn_on"]
+        assert ups == ["light.hall", "light.kitchen"]           # not unavailable lights, not groups
+        assert all(c[1]["brightness_pct"] == 100 for c in ha.calls if c[0] == "light.turn_on")
         plays = [c[1] for c in ha.calls if c[0] == "media_player.play_media"]
         assert {p["entity_id"] for p in plays} == {"media_player.kitchen", "media_player.hall"}
         assert plays[0]["media_content_id"] == "http://192.0.2.5:8971/siren.wav"
+        ha.calls.clear()
         await alarm.respond(f"SMARTCAM_STOP_{incident['id']}", "Regin")
-        s = ha.services()
-        assert "sonos.restore" in s and s[-1] == "scene.turn_on" and not esc.active
+        assert "sonos.restore" in ha.services() and not esc.active
+        back = {c[1]["entity_id"]: c for c in ha.calls if c[0].startswith("light.")}
+        assert back["light.hall"][0] == "light.turn_off"
+        assert back["light.kitchen"] == ("light.turn_on", {"entity_id": "light.kitchen", "brightness": 77,
+                                                           "color_temp_kelvin": 2700})
     asyncio.run(go())
 
 
@@ -73,7 +80,7 @@ def test_disarming_stops_it_and_a_false_alarm_never_starts_it():
         await alarm.respond(f"SMARTCAM_CONFIRM_{incident['id']}")
         assert esc.active
         await alarm.disarm()
-        assert not esc.active and ha.services()[-1] == "scene.turn_on"
+        assert not esc.active and ha.services()[-1].startswith("light.")
         ha.calls.clear()
         incident = await alarm.alert("smoke", "smoke at kitchen")
         await alarm.respond(f"SMARTCAM_FALSE_{incident['id']}")

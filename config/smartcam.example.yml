@@ -128,7 +128,7 @@ faces:                  # who it is: people from Home Assistant (family) plus pe
 
 escalation:             # a confirmed alarm ("Confirm alarm" on the push): lights to full, siren on the speakers
   enabled: false
-  lights: [all]         # all = every light; saved as a scene first and put back when stopped or disarmed
+  lights: [all]         # all = every light; each one saved first and put back when stopped or disarmed
   speakers: []          # e.g. [media_player.kitchen, media_player.living_room] (Sonos are snapshotted and restored)
   volume: 0.6
   siren_minutes: 5

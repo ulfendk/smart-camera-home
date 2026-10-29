@@ -2,8 +2,10 @@
 
 Every chosen light goes to full brightness and the speakers play a siren, the way a doorbell automation plays its
 ding-dong (media_player.play_media). The siren is SmartCam's own (generated, served at /siren.wav), so nothing
-needs copying into Home Assistant. Before anything changes, the lights are saved as a Home Assistant scene and the
-Sonos speakers snapshotted; stopping (the "Stop siren" button, disarming, or the time running out) puts both back.
+needs copying into Home Assistant. Before anything changes, each light's state (on/off, brightness, colour) is
+saved and the Sonos speakers snapshotted; stopping (the "Stop siren" button, disarming, or the time running out)
+puts both back, light by light. (Not a Home Assistant scene: one awkward light fails a whole scene, and restoring
+a light group switches on all of its members.)
 """
 
 import asyncio
@@ -19,7 +21,8 @@ from .config import Config
 
 log = logging.getLogger(__name__)
 
-SCENE = "scene.smartcam_before_alarm"
+COLOUR = {"color_temp": "color_temp_kelvin", "hs": "hs_color", "xy": "xy_color", "rgb": "rgb_color",
+          "rgbw": "rgbw_color", "rgbww": "rgbww_color"}   # color_mode -> the attribute that brings it back
 SIREN_SECONDS = 30   # one play of the siren; it is played again until stopped
 
 
@@ -54,6 +57,7 @@ class Escalation:
         self.http = http or httpx.AsyncClient(base_url=cfg.ha.url, timeout=15,
                                               headers={"Authorization": f"Bearer {cfg.ha.token}"})
         self.active = False
+        self.before: dict[str, dict] = {}   # light -> its turn_on / turn_off call to put it back
         self._siren: asyncio.Task | None = None
         self._lights: asyncio.Task | None = None
         alarm.on_response.append(self._answered)
@@ -86,12 +90,27 @@ class Escalation:
         if state == "disarmed" and self.active:
             await self.stop()
 
-    async def _light_ids(self) -> list[str]:
-        if self.ec.lights != ["all"]:
-            return self.ec.lights
+    async def _save_lights(self) -> dict[str, dict]:
+        """How to put each light back: single lights only (a group would come back with all its members on)."""
         r = await self.http.get("/api/states")
         r.raise_for_status()
-        return [s["entity_id"] for s in r.json() if s["entity_id"].startswith("light.") and s["state"] in ("on", "off")]
+        wanted = None if self.ec.lights == ["all"] else set(self.ec.lights)
+        before = {}
+        for s in r.json():
+            e, a = s["entity_id"], s.get("attributes", {})
+            if not e.startswith("light.") or s["state"] not in ("on", "off") or a.get("entity_id") \
+                    or (wanted is not None and e not in wanted):
+                continue
+            if s["state"] == "off":
+                before[e] = {"service": "light.turn_off", "data": {"entity_id": e}}
+                continue
+            data = {"entity_id": e}
+            if a.get("brightness"):
+                data["brightness"] = a["brightness"]
+            if (key := COLOUR.get(a.get("color_mode"))) and a.get(key) is not None:
+                data[key] = a[key]
+            before[e] = {"service": "light.turn_on", "data": data}
+        return before
 
     async def start(self, incident: dict | None = None, siren_minutes: float | None = None,
                     lights_minutes: float | None = None) -> None:
@@ -101,14 +120,13 @@ class Escalation:
         log.warning("escalation: lights to full, siren on %s", ", ".join(self.ec.speakers) or "no speakers")
         if self.ec.lights:
             try:
-                lights = await self._light_ids()
+                self.before = await self._save_lights()
             except httpx.HTTPError as e:
-                log.warning("escalation: no light list (%s)", e)
-                lights = []
-            if lights:
-                await self._call("scene.create", {"scene_id": SCENE.split(".")[1], "snapshot_entities": lights})
-                await self._call("light.turn_on", {"entity_id": "all" if self.ec.lights == ["all"] else lights,
-                                                   "brightness_pct": 100})
+                log.warning("escalation: could not read the lights (%s)", e)
+                self.before = {}
+            if self.before:
+                await asyncio.gather(*(self._call("light.turn_on", {"entity_id": e, "brightness_pct": 100})
+                                       for e in self.before))
             self._lights = asyncio.create_task(self._later(lights_minutes or self.ec.lights_minutes, self.stop))
         if self.ec.speakers:
             await self._each("sonos.snapshot", {"with_group": True})
@@ -148,5 +166,5 @@ class Escalation:
                 except asyncio.CancelledError:
                     pass
         self._siren = self._lights = None
-        if self.ec.lights:
-            await self._call("scene.turn_on", {"entity_id": SCENE})
+        before, self.before = self.before, {}
+        await asyncio.gather(*(self._call(b["service"], b["data"]) for b in before.values()))

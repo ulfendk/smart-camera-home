@@ -559,7 +559,7 @@ const SECTIONS = [
     ["faces.threshold", "Same face from", "number", 0.45, "similarity 0..1; higher: fewer but surer names"],
     ["faces.wait", "Wait for the name (s)", "number", 4, "working from home / armed home: hold a push this long to see if it is family"],
   ]},
-  {title: "Escalation", desc: "When someone confirms an alarm (the Confirm alarm button on the push, or here), every chosen light goes to full brightness and the speakers play a siren. The lights are saved as a Home Assistant scene first and the Sonos speakers snapshotted; Stop siren (on the next push), disarming or the time running out puts both back. Needs SmartCam's address under Home Assistant, so the speakers can fetch the siren.", escalation: true, fields: [
+  {title: "Escalation", desc: "When someone confirms an alarm (the Confirm alarm button on the push, or here), every chosen light goes to full brightness and the speakers play a siren. Each light (brightness, colour) is saved first and the Sonos speakers snapshotted; Stop siren (on the next push), disarming or the time running out puts both back. Needs SmartCam's address under Home Assistant, so the speakers can fetch the siren.", escalation: true, fields: [
     ["escalation.enabled", "Escalate a confirmed alarm", "bool", false],
     ["escalation.lights", "Lights", "list", ["all"], "to full brightness; all = every light"],
     ["escalation.speakers", "Speakers", "list", [], "media players for the siren, e.g. media_player.kitchen"],
