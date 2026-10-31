@@ -50,6 +50,8 @@
   .who { color: var(--primary); }
   figcaption { padding: 8px 12px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: center; }
   small, .muted { color: var(--muted); }
+  .clip { position: relative; cursor: pointer; }
+  .clip::after { content: "▶"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 40px; color: #fff; text-shadow: 0 0 12px #000; opacity: .85; }
   iframe, figure img, figure video { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #000; object-fit: contain; }
   .score { font-weight: 500; }
   .score.high { color: var(--error); }
@@ -411,20 +413,35 @@ function eventQuery() {
   return q;
 }
 for (const id of ["f-kind", "f-camera", "f-time", "f-day"]) $(id).onchange = () => loadEvents();
+// New events appear by themselves while the list is open, but not while someone is watching a clip, has a
+// close-up open or is choosing a name: redrawing would take that away.
+setInterval(() => {
+  const list = $("events");
+  if (list.hidden || document.hidden || (document.activeElement?.tagName === "SELECT" && list.contains(document.activeElement))
+      || [...list.querySelectorAll("video")].some(v => !v.paused)
+      || list.querySelector('[data-act="closeup"][aria-pressed="true"]')) return;
+  loadEvents(true);
+}, 10000);
 
 let PEOPLE = [];
 async function nameEvent(id, name) {
   await fetch(`api/events/${id}/person`, json("POST", {name: name || null}));
 }
-async function loadEvents() {
+let shownEvents = "";   // what the list shows, so a refresh only redraws when something changed
+async function loadEvents(refresh = false) {
   const events = await (await fetch("api/events?" + eventQuery())).json();
+  const shown = JSON.stringify(events.map(e => [e.id, e.end_ts, e.score, e.notified, e.person, e.review, e.clip]));
+  if (refresh && shown === shownEvents) return;
+  shownEvents = shown;
   PEOPLE = await (await fetch("api/people")).json().catch(() => []);
   $("events").replaceChildren();
   $("status").textContent = events.length ? "" : "No events match.";
   for (const e of events) {
     const fig = document.createElement("figure");
-    const media = e.clip ? `<video controls playsinline preload="none" poster="media/${e.snapshot}" src="media/${e.clip}"></video>`
-                         : `<img loading="lazy" src="media/${e.snapshot}" alt="snapshot">`;
+    // A picture that loads when scrolled to, and the video only on a tap: a video's poster loads at once, and two
+    // hundred full-size pictures at once stall a phone.
+    const picture = `<img loading="lazy" decoding="async" src="media/${e.snapshot}" alt="snapshot">`;
+    const media = e.clip ? `<div class="clip" title="Play">${picture}</div>` : picture;
     const dl = (kind, text) => `<a class="chip" href="api/events/${e.id}/download/${kind}" download>${text}</a>`;
     const dur = e.end_ts ? `${Math.round(e.end_ts - e.start_ts)}s` : "ongoing";
     fig.innerHTML = `${media}
@@ -442,6 +459,12 @@ async function loadEvents() {
         <span>${e.crop ? `<button class="chip" data-act="closeup" aria-pressed="false">Close-up</button>` : ""}</span>
         <span>${dl("snapshot", "⤓ Picture")}${e.crop ? " " + dl("crop", "⤓ Close-up") : ""}${e.clip ? " " + dl("clip", "⤓ Video") : ""}</span>
       </figcaption>`;
+    const play = () => {
+      const clip = fig.querySelector(".clip");
+      if (clip) clip.onclick = () => clip.replaceWith(Object.assign(document.createElement("video"),
+        {src: `media/${e.clip}`, poster: `media/${e.snapshot}`, controls: true, playsInline: true, autoplay: true}));
+    };
+    play();
     // The close-up is shown in place of the picture: a new window loses the Home Assistant session.
     const closeup = fig.querySelector('[data-act="closeup"]');
     if (closeup) closeup.onclick = () => {
@@ -450,6 +473,7 @@ async function loadEvents() {
       const el = fig.firstElementChild;
       el.replaceWith(Object.assign(document.createElement("div"), {innerHTML: on
         ? `<img src="media/${e.crop}" alt="vehicle close-up">` : media}).firstElementChild);
+      if (!on) play();
     };
     const who = fig.querySelector('[data-act="who"]');
     if (who) who.onchange = () => nameEvent(e.id, who.value);
