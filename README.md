@@ -50,7 +50,7 @@ SmartCam per set of cameras: two would fight over the lights and the MQTT client
 
 For an Intel machine without an NVIDIA GPU, such as a Core Ultra mini PC, use the `intel` image
 (`ghcr.io/ulfendk/smart-camera-home:intel`, also `:intel-<commit sha>`). It runs detection with OpenVINO on
-the integrated graphics and decodes video there with VAAPI. It is built on Ubuntu 26.04 with Intel's current
+the integrated graphics, or the NPU of a Core Ultra, and decodes video there with VAAPI. It is built on Ubuntu 26.04 with Intel's current
 GPU compute runtime, for recent chips (Arc, Core Ultra); older iGPUs such as UHD 630 are no longer supported
 by that runtime and fall back to `openvino_device: CPU`.
 
@@ -58,11 +58,13 @@ by that runtime and fall back to `openvino_device: CPU`.
    ```yaml
    detect:
      hwaccel: vaapi
-     openvino_device: GPU    # or CPU; NPU is not in the image yet
+     openvino_device: GPU    # or NPU (Core Ultra), or CPU
    ```
 2. `docker compose -f docker-compose.intel.yml up -d` with [`docker-compose.intel.yml`](docker-compose.intel.yml)
-   (it passes `/dev/dri` through; no NVIDIA toolkit needed).
-3. Check the log for `on OpenVINOExecutionProvider (GPU)`, then open `http://<host>:8971`.
+   (it passes `/dev/dri` and the NPU's `/dev/accel` through; no NVIDIA toolkit needed).
+3. Check the log for `on OpenVINOExecutionProvider (GPU)` (or `(NPU)`), then open `http://<host>:8971`.
+   On a Core Ultra 9 285H, YOLO11s takes about 11 ms a frame on the GPU and 19 ms on the NPU, and the face
+   model 32 ms on the GPU and 10 ms on the NPU; the NPU leaves the GPU free for decoding.
 
 ## Running on a Mac (development)
 

@@ -1,7 +1,7 @@
 # smartcam for Linux, VAAPI decoding on an Intel iGPU. Two variants, built by .github/workflows/image.yml and
 # published to GitHub Container Registry:
 #   cuda  (default, tag latest): detection on an NVIDIA GPU
-#   intel (tag intel):           detection with OpenVINO on the Intel iGPU (Arc), or its CPU
+#   intel (tag intel):           detection with OpenVINO on the Intel iGPU (Arc), its NPU (Core Ultra) or its CPU
 #     docker build --build-arg VARIANT=intel --build-arg BASE=ubuntu:26.04 .
 # The config is not in the image: it is read from /app/data/smartcam.yml (the mounted data dir).
 
@@ -27,6 +27,8 @@ ARG VARIANT=cuda
 ARG GO2RTC_VERSION=v1.9.14
 # Intel's GPU compute runtime (OpenCL, Level Zero) for OpenVINO on the iGPU; Ubuntu's lags behind new chips.
 ARG NEO=26.35.39758.10 IGC=2.41.5 IGC_BUILD=22716 GMM=22.10.0
+# Intel's NPU user-space driver (Level Zero and its compiler); the kernel driver (ivpu) and firmware are the host's.
+ARG NPU=1.38.0 NPU_BUILD=20260910-34487311128
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_NO_CACHE=1 \
     UV_PYTHON_INSTALL_DIR=/opt/python LIBVA_DRIVER_NAME=iHD
 
@@ -47,6 +49,8 @@ RUN if [ "$VARIANT" = intel ]; then \
             compute-runtime/releases/download/${NEO}/libze-intel-gpu1_${NEO}-0_amd64.deb; do \
             curl -fsSLO "https://github.com/intel/$u" || exit 1; \
         done \
+        && curl -fsSL "https://github.com/intel/linux-npu-driver/releases/download/v${NPU}/linux-npu-driver-v${NPU}.${NPU_BUILD}-ubuntu2604.tar.gz" \
+            | tar -xz --wildcards './intel-level-zero-npu_*.deb' './intel-driver-compiler-npu_*.deb' \
         && apt-get update && apt-get install -y --no-install-recommends ./*.deb ocl-icd-libopencl1 libze1 \
         && cd / && rm -rf /tmp/neo /var/lib/apt/lists/*; \
     fi
