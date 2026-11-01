@@ -1,6 +1,6 @@
 import random
 
-from smartcam.ingest import Sampler, output_size
+from smartcam.ingest import PTS, FrameClock, Sampler, output_size
 
 
 def rate(fps_in: float, fps_out: float, jitter: float = 0.0, seconds: float = 60) -> float:
@@ -17,12 +17,52 @@ def test_thins_faster_stream_to_target():
     assert 4.9 < rate(15, 5, jitter=0.01) < 5.1
 
 
-def test_no_burst_after_stall():
+def test_duplicate_capture_times_are_not_a_burst_of_frames():
     s = Sampler(5)
     assert s.take(0.0)
-    # 20 frames buffered during a 4 s stall arrive within 100 ms.
+    # 20 frames with (almost) the same capture time: one of them.
     burst = [s.take(4.0 + i * 0.005) for i in range(20)]
     assert sum(burst) == 1
+
+
+def bursty(seconds=30, fps=5):
+    """A 5 fps camera whose frames arrive in bursts: captured every 200 ms, delivered up to 1.4 s late."""
+    rng = random.Random(2)
+    frames, deliver = [], 0.0
+    for i in range(int(seconds * fps)):
+        captured = 100 + i / fps
+        if i % 7 == 0:
+            deliver = captured + rng.uniform(0.6, 1.4)   # a stall, then everything since comes at once
+        deliver = max(deliver, captured + 0.01)
+        frames.append((i / fps + 0.033, deliver))        # (pts, arrival)
+    return frames
+
+
+def test_bursty_camera_keeps_its_frames_and_their_spacing():
+    clock, s, frames = FrameClock(), Sampler(5), bursty()
+    for pts, now in frames[:20]:                           # until a frame has come quickly, the delay is unknown
+        s.take(clock.ts(pts, now))
+    kept = [(t, now) for pts, now in frames[20:] if s.take(t := clock.ts(pts, now))]
+    assert len(kept) == len(frames) - 20                   # sampling by arrival keeps about a third of them
+    gaps = [b[0] - a[0] for a, b in zip(kept, kept[1:])]
+    assert min(gaps) > 0.19 and max(gaps) < 0.21           # capture times, not arrival times
+    assert all(t <= now for t, now in kept)
+
+
+def test_frame_clock_follows_a_restarted_stream_and_never_runs_ahead():
+    c = FrameClock()
+    assert c.ts(10.0, 1000.0) == 1000.0
+    assert abs(c.ts(10.2, 1000.9) - 1000.2) < 0.001        # late delivery: the capture time (plus a little creep)
+    assert c.ts(0.0, 2000.0) == 2000.0                     # pts went back: a new stream
+    assert c.ts(None, 2001.0) == 2001.0                    # no pts: arrival time
+    assert c.ts(0.4, 2000.1) <= 2000.1
+
+
+def test_showinfo_line_gives_frame_number_and_pts():
+    line = (b"[Parsed_showinfo_1 @ 0x5581] n:  42 pts: 378000 pts_time:4.2     duration:18000 fmt:bgr24 "
+            b"sar:1/1 s:1280x720 i:P iskey:0 type:P checksum:00000000")
+    m = PTS.search(line)
+    assert (int(m[1]), float(m[2])) == (42, 4.2)
 
 
 def test_output_size_keeps_aspect_and_even_height():
