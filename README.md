@@ -26,46 +26,105 @@ and MQTT entities for Home Assistant. It was written to fix two problems that ke
 On one home's labelled Frigate history (305 cases), SmartCam alerted on 252/252 real people with no
 false person alarms, against Frigate's 237/252 with 6.
 
-## Running with Docker (Linux, NVIDIA GPU)
+## Running with Docker
 
-Every push to `main` publishes `ghcr.io/ulfendk/smart-camera-home:latest` (and `:<commit sha>`). The
-image contains the code and the YOLO11 models; your config lives on the host. It uses CUDA 12, so
-Pascal GPUs (GTX 10-series) and newer work.
+Every push to `main` publishes two images to GitHub Container Registry. Each contains the code and the
+models; your config lives on the host.
+
+| Image | Detection and faces run on | For |
+|---|---|---|
+| `ghcr.io/ulfendk/smart-camera-home:latest` | an NVIDIA GPU (CUDA 12) | GTX 10-series and newer |
+| `ghcr.io/ulfendk/smart-camera-home:intel` | Intel graphics or a Core Ultra NPU (OpenVINO) | Arc, Core Ultra |
+
+Both decode video on an Intel iGPU with VAAPI when there is one. Each is also tagged with the commit
+(`:<sha>`, `:intel-<sha>`). Run only one SmartCam per set of cameras: two would fight over the lights and the
+MQTT client id.
+
+For every setup, first create the data folder (`DATA_DIR`, default `/srv/smartcam`) and put your config in it
+as `smartcam.yml`, starting from [`config/smartcam.example.yml`](config/smartcam.example.yml). Secrets can go in
+a `.env` next to it (see [`.env.example`](.env.example)).
+
+### NVIDIA GPU
 
 Prerequisites: the NVIDIA driver (>= 525) and the NVIDIA Container Toolkit, so that
 `docker run --rm --gpus all nvidia/cuda:12.8.1-base-ubuntu24.04 nvidia-smi` works.
 
-1. Create the data folder (`DATA_DIR`, default `/srv/smartcam`) and put your config in it as
-   `smartcam.yml`, starting from [`config/smartcam.example.yml`](config/smartcam.example.yml).
-   Secrets can go in a `.env` next to it (see [`.env.example`](.env.example)).
-2. `docker compose up -d` with this repository's [`docker-compose.yml`](docker-compose.yml), or in
-   Portainer: Stacks → Add stack → Repository, URL `https://github.com/ulfendk/smart-camera-home`,
-   compose path `docker-compose.yml`, and `DATA_DIR` / `TZ` as stack variables.
+1. In `smartcam.yml`:
+   ```yaml
+   detect:
+     hwaccel: vaapi          # Intel iGPU decodes; none without one
+   ```
+2. `docker compose up -d` with [`docker-compose.yml`](docker-compose.yml). Or in Portainer: Stacks → Add
+   stack → Repository, URL `https://github.com/ulfendk/smart-camera-home`, compose path `docker-compose.yml`,
+   and `DATA_DIR` / `TZ` as stack variables. Without an Intel iGPU, remove the `/dev/dri` device.
 3. Check the log for `on CUDAExecutionProvider`, then open `http://<host>:8971`.
 
-Without an Intel iGPU, drop the `/dev/dri` device and set `detect.hwaccel: none`. Run only one
-SmartCam per set of cameras: two would fight over the lights and the MQTT client id.
+### Intel GPU (Arc, Core Ultra)
 
-## Running with Docker (Linux, Intel without NVIDIA)
+The `intel` image is built on Ubuntu 26.04 with Intel's current GPU compute runtime, for recent chips. Older
+iGPUs such as UHD 630 are not supported by that runtime; use `openvino_device: CPU` there.
 
-For an Intel machine without an NVIDIA GPU, such as a Core Ultra mini PC, use the `intel` image
-(`ghcr.io/ulfendk/smart-camera-home:intel`, also `:intel-<commit sha>`). It runs detection with OpenVINO on
-the integrated graphics, or the NPU of a Core Ultra, and decodes video there with VAAPI. It is built on Ubuntu 26.04 with Intel's current
-GPU compute runtime, for recent chips (Arc, Core Ultra); older iGPUs such as UHD 630 are no longer supported
-by that runtime and fall back to `openvino_device: CPU`.
-
-1. Data folder and config as above, with
+1. In `smartcam.yml`:
    ```yaml
    detect:
      hwaccel: vaapi
-     openvino_device: GPU    # or NPU (Core Ultra), or CPU
+     openvino_device: GPU
    ```
-2. `docker compose -f docker-compose.intel.yml up -d` with [`docker-compose.intel.yml`](docker-compose.intel.yml)
-   (it passes `/dev/dri` and the NPU's `/dev/accel` through; no NVIDIA toolkit needed).
-3. Check the log for `on OpenVINOExecutionProvider (GPU)` (or `(NPU)`), then open `http://<host>:8971`.
-   On a Core Ultra 9 285H, YOLO11s takes about 11 ms a frame on the GPU and 19 ms on the NPU, and the face
-   model 32 ms on the GPU and 10 ms on the NPU. `faces: {device: NPU}` runs the faces there while detection
-   stays on the GPU.
+2. `docker compose -f docker-compose.intel.yml up -d` with
+   [`docker-compose.intel.yml`](docker-compose.intel.yml). It passes `/dev/dri` through; no NVIDIA toolkit is
+   needed. Remove its `/dev/accel` line if the machine has no NPU.
+3. Check the log for `on OpenVINOExecutionProvider (GPU)`, then open `http://<host>:8971`.
+
+### Intel NPU (Core Ultra)
+
+The NPU runs detection and faces, so the GPU stays free for other work, such as other models on the same
+machine. The GPU still decodes the video, in its media engine, which barely touches its compute. The image
+has Intel's NPU user-space driver; the host needs its kernel driver (`intel_vpu`, in Linux 6.x) and firmware,
+which is the case when `/dev/accel/accel0` exists.
+
+1. In `smartcam.yml`:
+   ```yaml
+   detect:
+     hwaccel: vaapi
+     openvino_device: NPU    # detection; faces follow it
+   ```
+2. `docker compose -f docker-compose.intel.yml up -d`, as for the GPU. It passes `/dev/accel` through.
+3. Check the log for `on OpenVINOExecutionProvider (NPU)` for both `yolo11` and `auraface`.
+
+Detection and faces can also be split: `faces: {device: NPU}` runs the faces on the NPU while detection stays
+on `detect.openvino_device`.
+
+Measured on a Core Ultra 9 285H, per frame (or per face):
+
+| Model | GPU | NPU |
+|---|---|---|
+| YOLO11s (`models/yolo11s.onnx`, the default) | 11 ms | 16–19 ms |
+| YOLO11m (`models/yolo11m.onnx`, more accurate) | 28 ms | 33 ms |
+| Faces (AuraFace) | 32 ms | 10 ms |
+
+With YOLO11m on the NPU, seven cameras at 5 fps keep the same frame rate as on the GPU, using about 1.5 CPU cores.
+
+### Sharing the machine
+
+On a host that runs other important software, cap SmartCam in its compose file and limit what it stores:
+
+```yaml
+services:
+  smartcam:
+    cpus: 6                  # hard cap
+    cpu_shares: 512          # half the default weight: other software wins when the CPU is busy
+    mem_limit: 8g
+    memswap_limit: 8g
+    oom_score_adj: 500       # first in line if the machine runs out of memory
+    pids_limit: 2048
+    logging:
+      options: {max-size: 20m, max-file: "5"}
+```
+
+```yaml
+record:
+  max_gb: 200                # recordings, clips and snapshots in total; the oldest go first
+```
 
 ## Running on a Mac (development)
 

@@ -281,12 +281,12 @@
       <div>
         <ol>
           <li>Create a data folder and put your config in it as <code>smartcam.yml</code>, starting from the <a href="https://github.com/ulfendk/smart-camera-home/blob/main/config/smartcam.example.yml">example config</a>.</li>
-          <li>Start the stack with <code>docker compose up -d</code>, or as a Portainer stack straight from the repository. On an Intel machine without NVIDIA, use the <code>intel</code> image and <a href="https://github.com/ulfendk/smart-camera-home/blob/main/docker-compose.intel.yml"><code>docker-compose.intel.yml</code></a> (OpenVINO on the integrated graphics or the NPU).</li>
+          <li>Start the stack with <code>docker compose up -d</code>, or as a Portainer stack straight from the repository. On an Intel machine without NVIDIA, use the <code>intel</code> image and <a href="https://github.com/ulfendk/smart-camera-home/blob/main/docker-compose.intel.yml"><code>docker-compose.intel.yml</code></a>, and choose <code>openvino_device: GPU</code> or <code>NPU</code>. On a Core Ultra, the NPU runs detection and faces and leaves the graphics free for other work. The <a href="https://github.com/ulfendk/smart-camera-home#running-with-docker">README</a> has the steps for NVIDIA, Intel graphics and the NPU, measured speeds, and limits for sharing the machine.</li>
           <li>Open the web UI on port 8971, or add it to the Home Assistant sidebar (below). Everything else is set up in its Settings tab.</li>
         </ol>
         <div class="req">
           <span class="chip"><span class="mdi mdi-docker"></span>Docker</span>
-          <span class="chip"><span class="mdi mdi-expansion-card"></span>NVIDIA GPU (driver ≥ 525) or Intel graphics</span>
+          <span class="chip"><span class="mdi mdi-expansion-card"></span>NVIDIA GPU (driver ≥ 525), Intel graphics or a Core Ultra NPU</span>
           <span class="chip"><span class="mdi mdi-cctv"></span>RTSP cameras</span>
           <span class="chip"><span class="mdi mdi-home-assistant"></span>Home Assistant + MQTT</span>
         </div>
