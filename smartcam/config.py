@@ -100,6 +100,7 @@ class RecordConfig(BaseModel):
     continuous_hours: float = 6   # every segment is kept this long; event clips are cut from them
     event_days: float = 10        # event clips and snapshots are kept this long
     min_free_gb: float = 10       # below this, the oldest recordings go first, then the oldest events
+    max_gb: float | None = None   # the same once recordings, clips and snapshots take more than this in total
 
 
 class DetectConfig(BaseModel):

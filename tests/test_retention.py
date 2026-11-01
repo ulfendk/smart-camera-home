@@ -52,3 +52,17 @@ def test_disk_guard_spares_the_last_hour_then_takes_oldest_events(monkeypatch):
     retention.prune(cfg, db, NOW)
     assert hours_left(cfg) == 2              # the current and the previous hour stay
     assert db.events_before() == []
+
+
+def test_max_gb_caps_what_smartcam_stores(monkeypatch):
+    cfg, db, events = setup(monkeypatch)                 # plenty of free disk
+    cfg.record.continuous_hours, cfg.record.event_days = 6, 10
+    for f in cfg.paths.recordings.rglob("*.mp4"):
+        f.write_bytes(b"x" * 1000)                       # 10 hours of 1 kB recordings, clips 1 byte
+    cfg.record.max_gb = 3500 / 1e9                       # room for about 3 hours
+    retention.prune(cfg, db, NOW)
+    assert hours_left(cfg) == 3                          # 7 within the buffer, oldest went until under the cap
+    assert [e["id"] for e in db.events_before()] == events[1::-1]   # recordings go before events
+    cfg.record.max_gb = 0
+    retention.prune(cfg, db, NOW)
+    assert hours_left(cfg) == 2 and db.events_before() == []

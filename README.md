@@ -171,7 +171,7 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
 | `smoke` | smoke sensors that push a picture from inside |
 | `escalation` | a confirmed alarm: lights to full, siren on the speakers |
 | `faces` | person recognition: on/off, similarity threshold, how long a push waits for a name |
-| `record` | what stays on disk: a rolling buffer of everything (`continuous_hours`), event clips and snapshots (`event_days`), and a free-space guard (`min_free_gb`) |
+| `record` | what stays on disk: a rolling buffer of everything (`continuous_hours`), event clips and snapshots (`event_days`), a free-space guard (`min_free_gb`) and an optional cap on what it stores (`max_gb`) |
 
 `${VAR}` and `${VAR:-default}` are filled in from the environment or `.env`.
 

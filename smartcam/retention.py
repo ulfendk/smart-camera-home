@@ -2,8 +2,9 @@
 
 Recordings are a rolling buffer: every segment is kept for `continuous_hours`, long enough for event
 clips to be cut from them. What lasts are the events: their clips and snapshots are kept for
-`event_days`. If free space still drops below `min_free_gb`, the oldest recordings are deleted first
-(never the last hour), then the oldest events.
+`event_days`. If free space still drops below `min_free_gb`, or what SmartCam stores grows past `max_gb`
+(for a disk shared with other software), the oldest recordings are deleted first (never the last hour),
+then the oldest events.
 """
 
 import asyncio
@@ -19,8 +20,25 @@ from .recorder import hour_dirs
 log = logging.getLogger(__name__)
 
 
+MEDIA = ("recordings", "clips", "snapshots", "faces")   # what max_gb counts (the database is small)
+
+
 def free_gb(cfg: Config) -> float:
     return shutil.disk_usage(cfg.paths.data).free / 1e9
+
+
+def size_gb(path) -> float:
+    if path.is_file():
+        return path.stat().st_size / 1e9
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1e9 if path.is_dir() else 0
+
+
+def used_gb(cfg: Config) -> float:
+    return sum(size_gb(cfg.paths.data / d) for d in MEDIA)
+
+
+def _event_gb(cfg: Config, event: dict) -> float:
+    return sum(size_gb(cfg.paths.data / event[k]) for k in ("clip", "snapshot", "crop") if event.get(k))
 
 
 def _remove_hour(cfg: Config, hour_dir) -> None:
@@ -67,12 +85,18 @@ def prune(cfg: Config, db: Database, now: float | None = None) -> tuple[int, int
         _remove_event(cfg, db, event)
         removed_events += 1
 
-    # Disk guard: recordings older than the last hour first, then the oldest events.
+    # Disk guard: recordings older than the last hour first, then the oldest events. What is stored is
+    # measured once and counted down, rather than walking every file again after each removal.
+    used = used_gb(cfg) if r.max_gb is not None else 0
+    short = lambda: free_gb(cfg) < r.min_free_gb or (r.max_gb is not None and used > r.max_gb)
     spare = [(s, d) for s, d in hour_dirs(cfg) if s + 3600 < now - 3600]
-    while free_gb(cfg) < r.min_free_gb and spare:
-        _remove_hour(cfg, spare.pop(0)[1])
+    while short() and spare:
+        hour_dir = spare.pop(0)[1]
+        used -= size_gb(hour_dir)
+        _remove_hour(cfg, hour_dir)
         removed_hours += 1
-    while free_gb(cfg) < r.min_free_gb and (oldest := db.events_before(limit=1)):
+    while short() and (oldest := db.events_before(limit=1)):
+        used -= _event_gb(cfg, oldest[0])
         _remove_event(cfg, db, oldest[0])
         removed_events += 1
     return removed_hours, removed_events
