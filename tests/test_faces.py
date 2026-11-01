@@ -202,3 +202,15 @@ def test_real_models_embed_the_same_face_the_same():
     img = np.full((240, 200, 3), 200, np.uint8)
     cv2.circle(img, (100, 120), 70, (150, 170, 210), -1)
     assert fr.best_face(img) is None or fr.best_face(img)[0].shape == (512,)   # a drawing need not be a face
+
+
+def test_face_model_device_defaults_to_detection_and_can_differ(monkeypatch):
+    import smartcam.faces as faces
+    seen = []
+    monkeypatch.setattr(faces, "FaceRecognizer", lambda fc, device: seen.append(device) or object())
+    cfg = load_config(TEST_CONFIG)
+    cfg.detect.openvino_device = "GPU"
+    engine = type("Engine", (), {"rules": RulesConfig()})()
+    faces.Recognition(cfg, engine, people=None, fc=faces.FacesConfig())
+    faces.Recognition(cfg, engine, people=None, fc=faces.FacesConfig(device="NPU"))
+    assert seen == ["GPU", "NPU"]

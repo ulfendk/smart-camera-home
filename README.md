@@ -64,7 +64,8 @@ by that runtime and fall back to `openvino_device: CPU`.
    (it passes `/dev/dri` and the NPU's `/dev/accel` through; no NVIDIA toolkit needed).
 3. Check the log for `on OpenVINOExecutionProvider (GPU)` (or `(NPU)`), then open `http://<host>:8971`.
    On a Core Ultra 9 285H, YOLO11s takes about 11 ms a frame on the GPU and 19 ms on the NPU, and the face
-   model 32 ms on the GPU and 10 ms on the NPU; the NPU leaves the GPU free for decoding.
+   model 32 ms on the GPU and 10 ms on the NPU. `faces: {device: NPU}` runs the faces there while detection
+   stays on the GPU.
 
 ## Running on a Mac (development)
 

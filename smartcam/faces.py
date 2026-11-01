@@ -47,6 +47,7 @@ class FacesConfig(BaseModel):
     interval: float = 1.0         # seconds between stills
     wait: float = 4.0             # WFH / armed home: hold a push this long for the name (family is not pushed)
     carry_distance: float = 0.35  # colour difference (Bhattacharyya, 0 same .. 1 different) for "the same person"
+    device: str | None = None     # Intel image: OpenVINO device for the face model (GPU, NPU, CPU); default detect's
 
 
 def align(image: np.ndarray, landmarks: np.ndarray) -> np.ndarray:
@@ -142,7 +143,7 @@ class Recognition:
     def __init__(self, cfg: Config, engine, people: People, fc: FacesConfig | None = None, model=None, grab=None):
         self.cfg, self.engine, self.people = cfg, engine, people
         self.fc = fc or FacesConfig(**cfg.faces)
-        self.model = model if model is not None else FaceRecognizer(self.fc, cfg.detect.openvino_device)
+        self.model = model if model is not None else FaceRecognizer(self.fc, self.fc.device or cfg.detect.openvino_device)
         self.grab = grab or stills.grab
         self.http = httpx.AsyncClient(timeout=10)
         self.window = engine.rules.sequence_window
