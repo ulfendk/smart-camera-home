@@ -37,14 +37,19 @@ class FrameClock:
     Some cameras deliver frames in bursts: several within milliseconds, then nothing for a second. Arrival
     time would give a burst the same timestamp, which throws off tracking and speeds. The pts keep the real
     spacing; the offset to the wall clock is the smallest seen (the frame that came quickest), allowed to
-    creep up slowly for a camera clock that runs slow, and reset when the stream restarts.
+    creep up slowly for a camera clock that runs slow, and reset when the stream restarts. If every frame
+    has come in too late for `STUCK` seconds, the stream's time has shifted (a backlog would have drained
+    by then), and the offset is reset too: without that, every frame would be dropped from then on.
     """
 
     CREEP = 0.002   # s of offset per s of stream: far more than any clock drift, far less than a burst
+    STUCK = 10.0    # s of nothing but late frames
 
-    def __init__(self):
+    def __init__(self, camera: str = ""):
+        self.camera = camera
         self.offset: float | None = None
         self.last_pts = 0.0
+        self.late_since: float | None = None
 
     def ts(self, pts: float | None, now: float) -> float:
         if pts is None:
@@ -55,7 +60,16 @@ class FrameClock:
         else:
             self.offset = min(off, self.offset + self.CREEP * (pts - self.last_pts))
         self.last_pts = pts
-        return min(self.offset + pts, now)
+        ts = min(self.offset + pts, now)
+        if now - ts <= MAX_LAG:
+            self.late_since = None
+        elif self.late_since is None:
+            self.late_since = now
+        elif now - self.late_since > self.STUCK:
+            log.warning("%s: frames %.0fs behind for %.0fs; resetting the frame clock", self.camera, now - ts, self.STUCK)
+            self.offset, self.late_since = off, None
+            ts = min(off + pts, now)
+        return ts
 
 
 class Sampler:
@@ -116,7 +130,7 @@ async def live_frames(cfg: Config, camera: str) -> AsyncIterator[Frame]:
             proc = await asyncio.create_subprocess_exec(
                 *decode_args(url, cfg.detect.fps, size, cfg.detect.hwaccel, live=True),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-            nbytes, sampler, clock = size[0] * size[1] * 3, Sampler(cfg.detect.fps), FrameClock()
+            nbytes, sampler, clock = size[0] * size[1] * 3, Sampler(cfg.detect.fps), FrameClock(camera)
             pts: dict[int, float] = {}
             reader = asyncio.create_task(_read_pts(proc.stderr, pts))
             try:

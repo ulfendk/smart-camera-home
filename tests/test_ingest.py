@@ -1,6 +1,6 @@
 import random
 
-from smartcam.ingest import PTS, FrameClock, Sampler, output_size
+from smartcam.ingest import MAX_LAG, PTS, FrameClock, Sampler, output_size
 
 
 def rate(fps_in: float, fps_out: float, jitter: float = 0.0, seconds: float = 60) -> float:
@@ -56,6 +56,15 @@ def test_frame_clock_follows_a_restarted_stream_and_never_runs_ahead():
     assert c.ts(0.0, 2000.0) == 2000.0                     # pts went back: a new stream
     assert c.ts(None, 2001.0) == 2001.0                    # no pts: arrival time
     assert c.ts(0.4, 2000.1) <= 2000.1
+
+
+def test_frame_clock_recovers_when_the_stream_time_falls_behind():
+    c = FrameClock()
+    for i in range(50):                                    # 10 s at 5 fps, on time
+        assert c.ts(i * 0.2, 1000 + i * 0.2) == 1000 + i * 0.2
+    late = [c.ts(10 + i * 0.2, 1030 + i * 0.2) for i in range(75)]   # the stream's time is now 20 s behind
+    assert all(1030 + i * 0.2 - t > MAX_LAG for i, t in enumerate(late[:50]))   # late, for a while
+    assert all(t == 1030 + i * 0.2 for i, t in enumerate(late[-20:], 55))       # then on time again
 
 
 def test_showinfo_line_gives_frame_number_and_pts():

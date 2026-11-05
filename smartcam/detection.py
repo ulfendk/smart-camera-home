@@ -1,6 +1,7 @@
 """Live detection: one pipeline per camera fed from its go2rtc sub-stream, results into the event engine."""
 
 import asyncio
+import io
 import logging
 import time
 from urllib.parse import urlsplit
@@ -18,14 +19,33 @@ from .static_map import StaticMap
 log = logging.getLogger(__name__)
 
 OCCUPANCY_HOLD = 60   # seconds a room stays occupied after the last sighting
+STALL = 60            # seconds a camera loop may spend on one frame, while new ones arrive, before it is reported
 
 
-async def _latest(cfg: Config, camera: str, slot: asyncio.Queue) -> None:
+async def _latest(cfg: Config, camera: str, slot: asyncio.Queue, beat: dict) -> None:
     """Keep only the newest frame in `slot`, so a slow consumer processes fresh frames, not a backlog."""
     async for frame in live_frames(cfg, camera):
+        beat["frame"] = time.monotonic()
         if slot.full():
             slot.get_nowait()
         slot.put_nowait(frame)
+
+
+async def _stall_watch(camera: str, loop_task: asyncio.Task, beat: dict) -> None:
+    """Log where a camera loop is stuck: frames keep coming, but it has not taken one for STALL seconds."""
+    reported = False
+    while True:
+        await asyncio.sleep(15)
+        now = time.monotonic()
+        if now - beat["loop"] < STALL or now - beat["frame"] > STALL:
+            reported = False
+            continue
+        if not reported:
+            reported = True
+            out = io.StringIO()
+            loop_task.print_stack(file=out)
+            log.error("%s: detection stuck for %.0fs while frames arrive; waiting in:\n%s",
+                      camera, now - beat["loop"], out.getvalue())
 
 
 _sun: SunDark | None = None
@@ -54,7 +74,9 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
     pipeline = CameraPipeline(cam, detector, static_map)
     engine.static_maps[cam.name] = static_map
     slot: asyncio.Queue[Frame] = asyncio.Queue(maxsize=1)
-    reader = asyncio.create_task(_latest(cfg, cam.name, slot))
+    beat = {"loop": time.monotonic(), "frame": time.monotonic()}
+    reader = asyncio.create_task(_latest(cfg, cam.name, slot, beat))
+    stall = asyncio.create_task(_stall_watch(cam.name, asyncio.current_task(), beat))
     light = await make_light(cfg, cam)
     speed = SpeedConfig(**(cam.speed or {}))
     meter = SpeedMeter(cam.name, speed) if speed.ready else None
@@ -64,6 +86,7 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
     try:
         while True:
             frame = await slot.get()
+            beat["loop"] = time.monotonic()
             if watchdog is not None:
                 watchdog.seen(cam.name)
             t0 = time.monotonic()
@@ -104,6 +127,7 @@ async def run_camera(cfg: Config, cam: CameraConfig, detector, engine: EventEngi
                 static_map.save()
     finally:
         reader.cancel()
+        stall.cancel()
         static_map.save()
         if light is not None:
             await light.light.off()
