@@ -20,13 +20,13 @@ def alert_payload(cfg: Config, event: dict, clip_ready: bool = False) -> dict:
     # A camera entity holding just this alert's image, so a later event doesn't change the picture.
     entity = f"camera.smartcam_alert_{alert_slot(cfg, event['id'])}"
     data = {
-        # Both load through HA, so they work away from home. iOS only shows the picture via
-        # entity_id (an attachment from camera_proxy is silently dropped); Android uses image.
-        "entity_id": entity,
-        "image": f"/api/camera_proxy/{entity}",
         "tag": f"smartcam-{event['id']}",       # the clip update replaces the first notification
         "group": "smartcam",
     }
+    if not event.get("alert_image_failed"):   # else the slot still shows an older event: no picture is better
+        # Both load through HA, so they work away from home. iOS only shows the picture via
+        # entity_id (an attachment from camera_proxy is silently dropped); Android uses image.
+        data |= {"entity_id": entity, "image": f"/api/camera_proxy/{entity}"}
     if cfg.ha.event_url:
         data["url"] = data["clickAction"] = cfg.ha.event_url.replace("{id}", str(event["id"]))
     who = event.get("person") and f"{event['person']}{'?' if event.get('person_via') else ''}"
@@ -51,7 +51,7 @@ def alarm_payload(cfg: Config, incident: dict, event: dict | None) -> dict:
         "actions": [{"action": f"{CONFIRM}_{n}", "title": "Confirm alarm", "destructive": True},
                     {"action": f"{FALSE}_{n}", "title": "False alarm"}],
     }
-    if event is not None:
+    if event is not None and not event.get("alert_image_failed"):
         entity = f"camera.smartcam_alert_{alert_slot(cfg, event['id'])}"
         data |= {"entity_id": entity, "image": f"/api/camera_proxy/{entity}"}
     if cfg.ha.event_url:

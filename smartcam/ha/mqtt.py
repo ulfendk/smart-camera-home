@@ -136,12 +136,12 @@ class HaMqtt:
             await self.client.publish(f"{self.cfg.mqtt.topic_prefix}/{topic}", payload, retain=retain)
 
     async def _publish_speed(self, event: dict) -> None:
+        await self._publish_alert_image(event)   # first: the push waits for it, the sensor doesn't
         cam = event["camera"]
         await self._publish(f"{cam}/vehicle_speed/attributes", json.dumps(
             {"label": event["label"], "event_id": event["id"], "direction": event["reasons"][1] if len(event["reasons"]) > 1 else None,
              "plate": event.get("plate"), "at": event["start_ts"]}))
         await self._publish(f"{cam}/vehicle_speed", str(event["speed"]))
-        await self._publish_alert_image(event)
 
     async def _publish_occupancy(self, camera: str, occupied: bool) -> None:
         await self._publish(f"{camera}/occupied", "ON" if occupied else "OFF")
@@ -172,10 +172,32 @@ class HaMqtt:
             await self._publish(f"{event['camera']}/person", "OFF")
 
     async def _publish_alert_image(self, event: dict) -> None:
-        await self._publish_snapshot(event)
+        """The event's own alert slot, which the push shows. If it can't be filled, even after the
+        connection is back, the event says so and the push goes without a picture: the slot would
+        still hold an older event's."""
         if event.get("snapshot"):
             data = (self.cfg.paths.data / event["snapshot"]).read_bytes()
-            await self._publish(f"alert/{alert_slot(self.cfg, event['id'])}", data)
+            topic = f"alert/{alert_slot(self.cfg, event['id'])}"
+            try:
+                await self._publish_once_connected(topic, data)
+                event.pop("alert_image_failed", None)
+            except (aiomqtt.MqttError, TimeoutError) as e:
+                event["alert_image_failed"] = True
+                log.warning("event %d: alert image not published (%s); pushing without it", event["id"], e)
+        await self._publish_snapshot(event)
+
+    async def _publish_once_connected(self, topic: str, payload, wait: float = 20) -> None:
+        """Publish, and if the connection is down or drops, try once more when it is back (within `wait` s)."""
+        client = self.client
+        if client is not None:
+            try:
+                return await self._publish(topic, payload)
+            except aiomqtt.MqttError:
+                pass
+        async with asyncio.timeout(wait):
+            while self.client is None or self.client is client:
+                await asyncio.sleep(0.5)
+        await self._publish(topic, payload)
 
     async def _publish_snapshot(self, event: dict) -> None:
         if event.get("snapshot"):

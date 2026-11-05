@@ -1,9 +1,16 @@
+import asyncio
+import contextlib
+import tempfile
 from pathlib import Path
+
+import aiomqtt
 
 from smartcam.config import load_config
 
 TEST_CONFIG = Path(__file__).parent / "config.yml"
-from smartcam.ha.mqtt import discovery_messages
+from smartcam.db import Database
+from smartcam.events import EventEngine, RulesConfig
+from smartcam.ha.mqtt import HaMqtt, discovery_messages
 from smartcam.ha.notify import alert_payload
 
 
@@ -111,3 +118,53 @@ def test_alarm_push_has_answer_buttons_for_its_incident_and_the_answer_replaces_
     answer = response_payload(cfg, {**INCIDENT, "status": "confirmed", "by": "Regin"})
     assert answer["data"]["tag"] == "smartcam-alarm-3" and "by Regin" in answer["message"]
     assert "actions" not in answer["data"]
+
+
+class _Client:
+    def __init__(self, fail: bool):
+        self.fail, self.sent = fail, []
+
+    async def publish(self, topic, payload, retain=True):
+        if self.fail:
+            raise aiomqtt.MqttError("Operation timed out")
+        self.sent.append(topic)
+
+
+def _mqtt_with_snapshot():
+    cfg = load_config(TEST_CONFIG)
+    cfg.paths.data = Path(tempfile.mkdtemp())
+    (cfg.paths.data / "s.jpg").write_bytes(b"jpeg")
+    db = Database(cfg.paths.data / "t.db")
+    mqtt = HaMqtt(cfg, EventEngine(cfg, db, RulesConfig()))
+    event = {"id": 7, "camera": "front_door", "label": "car", "reasons": ["19 km/h"], "snapshot": "s.jpg"}
+    return cfg, mqtt, event
+
+
+def test_alert_image_is_published_again_after_a_reconnect():
+    async def go():
+        cfg, mqtt, event = _mqtt_with_snapshot()
+        mqtt.client, fresh = _Client(fail=True), _Client(fail=False)
+
+        async def reconnect():
+            await asyncio.sleep(0.2)
+            mqtt.client = fresh
+        asyncio.create_task(reconnect())
+        await mqtt._publish_alert_image(event)
+        assert f"{cfg.mqtt.topic_prefix}/alert/8" in fresh.sent
+        assert "entity_id" in alert_payload(cfg, event)["data"]
+    asyncio.run(go())
+
+
+def test_push_goes_without_a_picture_when_the_alert_image_could_not_be_published():
+    async def go():
+        cfg, mqtt, event = _mqtt_with_snapshot()
+        mqtt.client = _Client(fail=True)
+
+        async def once_connected(topic, payload, wait=20):
+            raise TimeoutError
+        mqtt._publish_once_connected = once_connected
+        with contextlib.suppress(aiomqtt.MqttError):
+            await mqtt._publish_alert_image(event)
+        p = alert_payload(cfg, event)
+        assert event["alert_image_failed"] and "entity_id" not in p["data"] and "image" not in p["data"]
+    asyncio.run(go())
