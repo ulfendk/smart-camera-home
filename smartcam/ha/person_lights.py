@@ -3,13 +3,15 @@
 Each camera can list `person_lights`. When SmartCam confirms a person on that camera and it is dark,
 those lights go to `brightness` %; `seconds` after the person has gone they return to exactly what
 they were before (off, or the dimmed evening level). A light shared by several cameras stays up until
-all of them are quiet, and a light someone changes by hand meanwhile is left as it is.
+all of them are quiet, and a light someone changes by hand meanwhile is left as it is. What the lights
+were before is kept in the database, so a restart in the middle still puts them back.
 
 Dark: a numeric sensor (`dark_entity`, e.g. a lux sensor) below `dark_below`, else the sun below
 the horizon.
 """
 
 import asyncio
+import json
 import logging
 
 import httpx
@@ -19,6 +21,7 @@ from ..config import Config
 from ..events import EventEngine
 
 log = logging.getLogger(__name__)
+SAVED = "person_lights_before"   # settings key: light -> its state before we raised it
 
 
 class PersonLightsConfig(BaseModel):
@@ -30,17 +33,32 @@ class PersonLightsConfig(BaseModel):
 
 
 class PersonLights:
-    def __init__(self, cfg: Config, engine: EventEngine, plc: PersonLightsConfig | None = None, http=None):
+    def __init__(self, cfg: Config, engine: EventEngine, plc: PersonLightsConfig | None = None, http=None, db=None):
         self.cfg = cfg
+        self.db = db
         self.plc = plc or PersonLightsConfig(**cfg.person_lights)
         self.map = {name: cam.person_lights for name, cam in cfg.cameras.items() if cam.person_lights}
         self.http = http or httpx.AsyncClient(base_url=cfg.ha.url, timeout=15,
                                               headers={"Authorization": f"Bearer {cfg.ha.token}"})
         self.active: set[str] = set()                 # cameras with a person right now
-        self.before: dict[str, dict] = {}             # light -> its state before we raised it
+        self.before: dict[str, dict] = json.loads(db.get_setting(SAVED, "") or "{}") if db else {}
         self.timers: dict[str, asyncio.Task] = {}     # camera -> pending restore
         engine.on_open.append(self._person)
         engine.on_close.append(self._gone)
+
+    def _save(self) -> None:
+        if self.db is not None:
+            self.db.set_setting(SAVED, json.dumps(self.before))
+
+    async def resume(self) -> None:
+        """After a restart: lights still raised from before go back once nobody has been seen for `seconds`."""
+        if not self.before:
+            return
+        log.info("lights still up from before the restart: %s", ", ".join(self.before))
+        await asyncio.sleep(self.plc.seconds)
+        still_needed = {l for c in self.active for l in self.map[c]}
+        for light in [l for l in self.before if l not in still_needed]:
+            await self._restore(light)
 
     async def _state(self, entity: str) -> dict | None:
         r = await self.http.get(f"/api/states/{entity}")
@@ -72,6 +90,7 @@ class PersonLights:
             if s is None or s["state"] == "unavailable":
                 continue
             self.before[light] = {"on": s["state"] == "on", "brightness": s["attributes"].get("brightness")}
+            self._save()
             await self.http.post("/api/services/light/turn_on",
                                  json={"entity_id": light, "brightness_pct": self.plc.brightness})
         log.info("person on %s after dark: %s up", cam, ", ".join(self.map[cam]))
@@ -89,13 +108,17 @@ class PersonLights:
         for light in self.map[cam]:
             if light in still_needed or light not in self.before:
                 continue
-            was = self.before.pop(light)
-            s = await self._state(light)
-            if s is None or s["attributes"].get("brightness") not in (None, round(self.plc.brightness * 2.55)):
-                continue   # changed by hand meanwhile: leave it
-            if was["on"]:
-                data = {"entity_id": light} | ({"brightness": was["brightness"]} if was["brightness"] else {})
-                await self.http.post("/api/services/light/turn_on", json=data)
-            else:
-                await self.http.post("/api/services/light/turn_off", json={"entity_id": light})
+            await self._restore(light)
         log.info("%s quiet: lights back as they were", cam)
+
+    async def _restore(self, light: str) -> None:
+        was = self.before.pop(light)
+        self._save()
+        s = await self._state(light)
+        if s is None or s["attributes"].get("brightness") not in (None, round(self.plc.brightness * 2.55)):
+            return   # changed by hand meanwhile: leave it
+        if was["on"]:
+            data = {"entity_id": light} | ({"brightness": was["brightness"]} if was["brightness"] else {})
+            await self.http.post("/api/services/light/turn_on", json=data)
+        else:
+            await self.http.post("/api/services/light/turn_off", json={"entity_id": light})

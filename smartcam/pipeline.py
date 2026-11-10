@@ -107,7 +107,8 @@ class CameraPipeline:
     def _faded(self, t: Track, now: float) -> bool:
         if not t.stationary or now - t.first_ts < self.cfg.faded_after:
             return False
-        return max(s for ts, _, s in t.history if ts >= now - self.cfg.faded_after) < self.cfg.confirm_score
+        # No detections at all in the window (the track only coasted) counts as faded too.
+        return max((s for ts, _, s in t.history if ts >= now - self.cfg.faded_after), default=0.0) < self.cfg.confirm_score
 
     def _confirm(self, t: Track, now: float, tracks: list[Track]) -> bool:
         cfg = self.cfg
