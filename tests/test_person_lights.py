@@ -74,3 +74,45 @@ def test_shared_light_waits_for_both_cameras_and_hand_changes_are_kept():
         await asyncio.sleep(0.1)
         assert ha.states["light.shared"]["attributes"]["brightness"] == 128
     asyncio.run(go())
+
+
+class FakeDb:
+    def __init__(self):
+        self.settings = {}
+
+    def get_setting(self, key, default=None):
+        return self.settings.get(key, default)
+
+    def set_setting(self, key, value):
+        self.settings[key] = value
+
+
+def test_restart_while_raised_still_puts_lights_back():
+    async def go():
+        db = FakeDb()
+        pl, ha = setup()
+        pl.db = db
+        await pl._person(ev("front_door"))   # raised, then SmartCam dies before the person leaves
+        pl2 = PersonLights(pl.cfg, type("E", (), {"on_open": [], "on_close": []})(), PersonLightsConfig(seconds=0.05),
+                           http=ha, db=db)
+        await pl2._person(ev("front_door"))   # seen again after the restart: the raised level is not taken as "before"
+        await pl2._gone(ev("front_door"))
+        await asyncio.sleep(0.1)
+        assert ha.states["light.porch"] == {"state": "on", "attributes": {"brightness": 26}}
+        assert ha.states["light.shared"]["state"] == "off"
+        assert db.settings["person_lights_before"] == "{}"
+    asyncio.run(go())
+
+
+def test_resume_after_restart_with_nobody_there():
+    async def go():
+        db = FakeDb()
+        pl, ha = setup()
+        pl.db = db
+        await pl._person(ev("front_door"))
+        pl2 = PersonLights(pl.cfg, type("E", (), {"on_open": [], "on_close": []})(), PersonLightsConfig(seconds=0.05),
+                           http=ha, db=db)
+        await pl2.resume()
+        assert ha.states["light.porch"] == {"state": "on", "attributes": {"brightness": 26}}
+        assert ha.states["light.shared"]["state"] == "off"
+    asyncio.run(go())

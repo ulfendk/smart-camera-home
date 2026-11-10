@@ -49,10 +49,11 @@ async def main() -> None:
         if alarm is not None and EscalationConfig(**cfg.escalation).enabled:
             escalation = Escalation(cfg, alarm)   # a confirmed alarm: lights to full, siren on the speakers
         link = HaLink(cfg, engine, alarm, smoke, people)   # alarm/away entities, push buttons, smoke sensors, people
+    person_lights = None
     if cfg.ha.enabled and any(c.person_lights for c in cfg.cameras.values()):
         from .ha.person_lights import PersonLights, PersonLightsConfig
         if PersonLightsConfig(**cfg.person_lights).enabled:
-            PersonLights(cfg, engine)
+            person_lights = PersonLights(cfg, engine, db=db)
     doorbell = None
     if cfg.ha.enabled and cfg.doorbell.get("entity"):
         from .ha.doorbell import Doorbell
@@ -92,6 +93,8 @@ async def main() -> None:
                 tg.create_task(alarm.morning_clock())
             if doorbell is not None:
                 tg.create_task(doorbell.run())
+            if person_lights is not None:
+                tg.create_task(person_lights.resume())   # lights left up by a crash or restart go back
             if WallConfig(**cfg.wall).enabled:
                 tg.create_task(WallFeed(cfg, engine).run())
             tg.create_task(_restart_on(restart))

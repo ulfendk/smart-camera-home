@@ -139,3 +139,11 @@ def test_person_mask_drops_detections_with_feet_inside():
     p = CameraPipeline(cam, Scripted(plan))
     p.cfg.detect_refresh = 0
     assert run(p, 15) == []
+
+
+def test_track_with_no_detections_in_the_fade_window_counts_as_faded():
+    from types import SimpleNamespace
+
+    p = CameraPipeline(CAM, Scripted([]))
+    old = SimpleNamespace(stationary=True, first_ts=0.0, history=[(0.0, LAMP, 0.9)])
+    assert p._faded(old, p.cfg.faded_after + 30)   # only coasted lately: no crash, and it has faded
