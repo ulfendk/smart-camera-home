@@ -3,7 +3,7 @@
 Each camera can list `person_lights`. When SmartCam confirms a person on that camera and it is dark,
 those lights go to `brightness` %; `seconds` after the person has gone they return to exactly what
 they were before (off, or the dimmed evening level). A light shared by several cameras stays up until
-all of them are quiet, and a light someone changes by hand meanwhile is left as it is. What the lights
+all of them are quiet, and a light someone changes or turns off meanwhile is left as it is. What the lights
 were before is kept in the database, so a restart in the middle still puts them back.
 
 Dark: a numeric sensor (`dark_entity`, e.g. a lux sensor) below `dark_below`, else the sun below
@@ -115,8 +115,11 @@ class PersonLights:
         was = self.before.pop(light)
         self._save()
         s = await self._state(light)
-        if s is None or s["attributes"].get("brightness") not in (None, round(self.plc.brightness * 2.55)):
-            return   # changed by hand meanwhile: leave it
+        if s is None or s["state"] != "on":
+            return   # turned off meanwhile (by hand or e.g. a daylight automation): leave it
+        b = s["attributes"].get("brightness")
+        if b is not None and abs(b - round(self.plc.brightness * 2.55)) > 3:
+            return   # dimmed by hand meanwhile: leave it (some bulbs report 254 for 100 %)
         if was["on"]:
             data = {"entity_id": light} | ({"brightness": was["brightness"]} if was["brightness"] else {})
             await self.http.post("/api/services/light/turn_on", json=data)

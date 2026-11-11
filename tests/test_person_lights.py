@@ -76,6 +76,28 @@ def test_shared_light_waits_for_both_cameras_and_hand_changes_are_kept():
     asyncio.run(go())
 
 
+def test_light_turned_off_meanwhile_stays_off():
+    async def go():
+        pl, ha = setup()
+        await pl._person(ev("front_door"))
+        await pl.http.post("/api/services/light/turn_off", json={"entity_id": "light.porch"})   # daylight automation
+        await pl._gone(ev("front_door"))
+        await asyncio.sleep(0.1)
+        assert ha.states["light.porch"]["state"] == "off"   # not put back to its dimmed evening level
+    asyncio.run(go())
+
+
+def test_full_reported_as_254_still_counts_as_ours():
+    async def go():
+        pl, ha = setup()
+        await pl._person(ev("front_door"))
+        ha.states["light.porch"]["attributes"]["brightness"] = 254   # e.g. IKEA bulbs via Zigbee2MQTT
+        await pl._gone(ev("front_door"))
+        await asyncio.sleep(0.1)
+        assert ha.states["light.porch"] == {"state": "on", "attributes": {"brightness": 26}}
+    asyncio.run(go())
+
+
 class FakeDb:
     def __init__(self):
         self.settings = {}
