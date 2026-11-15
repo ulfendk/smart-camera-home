@@ -22,6 +22,8 @@ def test_discovery_covers_away_and_every_camera():
     assert len(topics) == 4 + 3 * len(cfg.cameras) + cfg.mqtt.alert_slots   # away, wfh, alarm, incident, per camera, slots
     ids = [p["unique_id"] for _, p in discovery_messages(cfg)]
     assert len(ids) == len(set(ids))
+    cfg.presence = {"tv": "media_player.apple_tv"}
+    assert f"{cfg.mqtt.discovery_prefix}/switch/smartcam/presence_tv/config" in [t for t, _ in discovery_messages(cfg)]
 
 
 def test_alert_payload_uses_its_own_alert_image_and_stable_tag():

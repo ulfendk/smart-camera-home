@@ -37,6 +37,10 @@ class Wfh(BaseModel):
     wfh: bool
 
 
+class PresenceTv(BaseModel):
+    tv: bool
+
+
 class Person(BaseModel):
     name: str
     group: str = "other"
@@ -303,6 +307,19 @@ def create_app(cfg: Config, db: Database, engine: EventEngine, restart: asyncio.
             raise HTTPException(404, "presence simulation is off")
         await presence.learn()
         return await presence.preview()
+
+    @app.get("/api/presence/tv")
+    def get_presence_tv() -> PresenceTv:
+        if presence is None or not presence.pc.tv:
+            raise HTTPException(404, "no TV in the presence simulation")
+        return PresenceTv(tv=presence.tv_enabled)
+
+    @app.put("/api/presence/tv")
+    async def put_presence_tv(body: PresenceTv) -> PresenceTv:
+        if presence is None or not presence.pc.tv:
+            raise HTTPException(404, "no TV in the presence simulation")
+        await presence.set_tv(body.tv)
+        return PresenceTv(tv=presence.tv_enabled)
 
     @app.get("/api/config")
     def get_config() -> dict:

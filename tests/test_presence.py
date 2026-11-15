@@ -89,3 +89,90 @@ def test_own_recordings_are_kept_and_read_back():
     lib.record(200.0, "light.kitchen", False, None)
     assert lib.recorded(0, 1000) == {"light.kitchen": [(100.0, True, 40), (200.0, False, None)]}
     assert lib.recording_since() is None
+
+
+def test_tv_counts_as_on_unless_off_or_standby():
+    from smartcam.presence import is_on
+    assert [is_on("media_player.tv", s) for s in ("playing", "paused", "idle", "off", "standby", "unavailable")] \
+        == [True, True, True, False, False, False]
+    assert is_on("light.x", "on") and is_on("light.x", "off") is False and is_on("light.x", "unavailable") is None
+    pc = PresenceConfig(lights=["light.x"], tv="media_player.tv")
+    lib = [{"day": "2026-10-13", "weekend": False, "sun": (7.5 * 3600, 17.2 * 3600),
+            "lights": {"light.x": [(18 * 3600, 20 * 3600)], "media_player.tv": [(19 * 3600, 22 * 3600)],
+                       "light.gone": [(18 * 3600, 19 * 3600)]}}]
+    _, actions = plan(date(2026, 10, 27), lib, pc, (8 * 3600, 16.6 * 3600), CPH, random.Random(1))
+    assert {a.light for a in actions} == {"light.x", "media_player.tv"}
+    _, actions = plan(date(2026, 10, 27), lib, PresenceConfig(lights=["light.x"]), (8 * 3600, 16.6 * 3600), CPH, random.Random(1))
+    assert {a.light for a in actions} == {"light.x"}
+
+
+class FakeHa:
+    def __init__(self, states):
+        self.states, self.calls = states, []
+
+    async def get(self, path):
+        s = self.states.get(path.rsplit("/", 1)[1])
+        return type("R", (), {"status_code": 200 if s else 404, "json": lambda self=None: {"state": s}})()
+
+    async def post(self, path, json):
+        domain, service = path.split("/")[-2:]
+        self.calls.append((f"{domain}.{service}", json))
+        if service == "play_media" or (domain == "remote" and service == "turn_on"):
+            self.states["media_player.tv"] = "playing"
+        elif service == "turn_off":
+            self.states[json["entity_id"]] = "off"
+
+
+def simulator(states):
+    import tempfile
+    from pathlib import Path
+    from smartcam.db import Database
+    from smartcam.presence import PresenceSimulator
+    cfg = type("C", (), {"presence": {"lights": ["light.x"], "tv": "media_player.tv", "tv_remote": "remote.tv",
+                                      "tv_url": "https://example.invalid/dr1"},
+                         "ha": type("H", (), {"url": "http://ha", "token": "t"})()})()
+    db = Database(Path(tempfile.mkdtemp()) / "t.db")
+    sim = PresenceSimulator(cfg, db, alarm=None)
+    sim.http = FakeHa(states)
+    return sim, db
+
+
+def test_tv_is_woken_and_opened_on_the_channel_then_switched_off(monkeypatch):
+    import asyncio
+    import smartcam.presence as presence
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(presence.asyncio, "sleep", lambda s: real_sleep(0))   # no waiting for the TV to wake
+    async def go():
+        sim, _ = simulator({"media_player.tv": "off"})
+        await sim._switch("media_player.tv", True)
+        assert [c[0] for c in sim.http.calls] == ["remote.turn_on", "media_player.play_media"]
+        assert sim.http.calls[1][1]["media_content_id"] == "https://example.invalid/dr1"
+        await sim._stop()
+        assert sim.http.calls[-1] == ("media_player.turn_off", {"entity_id": "media_player.tv"})
+        sim.http.calls.clear()
+        sim.http.states["media_player.tv"] = "playing"      # already on: nothing to do
+        await sim._switch("media_player.tv", True)
+        assert sim.http.calls == []
+    asyncio.run(go())
+
+
+def test_tv_switch_is_on_by_default_kept_and_turns_our_tv_off(monkeypatch):
+    import asyncio
+    import smartcam.presence as presence
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(presence.asyncio, "sleep", lambda s: real_sleep(0))   # no waiting for the TV to wake
+    async def go():
+        sim, db = simulator({"media_player.tv": "off"})
+        seen = []
+        async def cb(on):
+            seen.append(on)
+        sim.on_tv.append(cb)
+        assert sim.tv_enabled
+        await sim._switch("media_player.tv", True)
+        await sim.set_tv(False)
+        assert sim.http.states["media_player.tv"] == "off" and seen == [False]
+        sim.http.calls.clear()
+        await sim._switch("media_player.tv", True)          # left out while switched off
+        assert sim.http.calls == []
+        assert not presence.PresenceSimulator(sim.cfg, db, alarm=None).tv_enabled   # survives a restart
+    asyncio.run(go())

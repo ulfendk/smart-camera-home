@@ -170,7 +170,9 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   weekend, all lights together), warped to today's sunrise and sunset with bedtime kept, learned from Home
   Assistant's light history into SmartCam's own library (so it outlives the recorder). Hand-switched lights
   are left alone; on disarm only its own lights are switched off. Settings → Presence simulation previews
-  today's plan.
+  today's plan. With `presence.tv` (e.g. `media_player.apple_tv`) the TV is learned and replayed too: woken
+  with `presence.tv_remote` and opened on `presence.tv_url` (e.g. a deep link to DR1 live);
+  `switch.smartcam_presence_tv` (on by default) leaves it out.
 - Working from home: `switch.smartcam_wfh` in Home Assistant (or WFH at the top of the UI) pushes every person an
   outdoor camera sees, day or night, whatever the score; person masks keep the street out. Only people arriving
   after it is switched on count, and going away switches it off.

@@ -15,6 +15,11 @@ recorded day map to today's, while midnight, midday and `bedtime` stay put, and 
 moves smoothly; lights that came on 20 minutes after dusk three weeks ago come on 20 minutes after
 today's dusk. A light someone switches by hand is left alone for the rest of the day; on disarm only
 the lights the simulation switched on are switched off.
+
+The TV (`tv`, a media player such as an Apple TV) is learned and replayed the same way, as one more
+light: on is anything but off or standby. It is woken with `tv_remote` (the TV set follows over
+HDMI-CEC) and `tv_url` is opened, e.g. a deep link to a live channel. The TV switch
+(switch.smartcam_presence_tv, on by default) leaves it out of the replay without forgetting it.
 """
 
 import asyncio
@@ -52,6 +57,23 @@ class PresenceConfig(BaseModel):
     daylight_margin_minutes: float = 30 # intervals entirely in daylight (this far from sunrise/sunset) are skipped
     holidays_country: str | None = None # public holidays count as Sundays; default: Home Assistant's country
     extra_holidays: list[str] = []      # more days treated like holidays, as MM-DD (e.g. 12-24, 12-31)
+    tv: str | None = None               # a media player replayed like a light, e.g. media_player.apple_tv
+    tv_remote: str | None = None        # wakes it (and the TV set over HDMI-CEC), e.g. remote.apple_tv
+    tv_url: str | None = None           # opened once it is on, e.g. a deep link to DR1 live
+
+    @property
+    def entities(self) -> list[str]:
+        return list(self.lights) + ([self.tv] if self.tv else [])
+
+
+TV_OFF = ("off", "standby", "unknown", "unavailable")
+
+
+def is_on(entity: str, state: str) -> bool | None:
+    """On, off, or None when the state says neither (a light that is unavailable)."""
+    if entity.startswith("media_player."):
+        return state not in TV_OFF
+    return {"on": True, "off": False}.get(state)
 
 
 @dataclass
@@ -244,7 +266,7 @@ def plan(day: date, library: list[dict], pc: PresenceConfig, sun: tuple[float, f
     margin = pc.daylight_margin_minutes * 60
     actions = []
     for light, spans in src["lights"].items():
-        if pc.lights and light not in pc.lights:
+        if pc.entities and light not in pc.entities:
             continue
         for span in spans:
             s, e, level = span[0], span[1], span[2] if len(span) > 2 else None
@@ -271,6 +293,7 @@ class PresenceSimulator:
         self.manual: set[str] = set()         # lights someone took over; left alone today
         self.current: tuple[str | None, list[Action]] = (None, [])
         self.country: str | None = self.pc.holidays_country
+        self.on_tv: list = []                 # callbacks(on) when the TV switch changes
 
     async def _where(self) -> tuple[float, float, ZoneInfo]:
         if self.where is None:
@@ -289,8 +312,8 @@ class PresenceSimulator:
     async def learn(self) -> int:
         """Add the complete past days Home Assistant still has to the library. Returns how many."""
         lat, lon, tz = await self._where()
-        entities = list(self.pc.lights) + ([self.cfg.ha.alarm_entity] if self.cfg.ha.alarm_entity else [])
-        if not self.pc.lights:
+        entities = self.pc.entities + ([self.cfg.ha.alarm_entity] if self.cfg.ha.alarm_entity else [])
+        if not self.pc.entities:
             return 0
         now = datetime.now(tz)
         start = (now - timedelta(days=12)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -302,8 +325,8 @@ class PresenceSimulator:
         for series in r.json():
             eid = series[0]["entity_id"]
             changes[eid] = [(datetime.fromisoformat(s.get("last_updated") or s["last_changed"]).timestamp(),
-                             s["state"] == "on", _pct((s.get("attributes") or {}).get("brightness")))
-                            for s in series if s["state"] in ("on", "off")]
+                             on, _pct((s.get("attributes") or {}).get("brightness")))
+                            for s in series if (on := is_on(eid, s["state"])) is not None]
         added = 0
         day = start.date() + timedelta(days=1)   # the first day may start before the history does
         since = self.library.recording_since()
@@ -316,7 +339,7 @@ class PresenceSimulator:
                 if self._home(changes.get(self.cfg.ha.alarm_entity), day, tz):
                     lights = {l: [(clock_of(start_ts + iv[0], day, tz), clock_of(start_ts + iv[1], day, tz), *iv[2:])
                                   for iv in intervals(changes.get(l, []), start_ts, end_ts, self.pc)]
-                              for l in self.pc.lights}
+                              for l in self.pc.entities}
                     if any(lights.values()):
                         self.library.add(day, sun_times(day, lat, lon, tz), lights)
                         added += 1
@@ -337,18 +360,51 @@ class PresenceSimulator:
         sun = sun_times(day, lat, lon, tz)
         hols = self.holidays(day)
         src, actions = plan(day, self.library.days(), self.pc, sun, tz, random.Random(day.toordinal()), hols)
+        actions = [a for a in actions if self.tv_enabled or a.light != self.pc.tv]
         fmt = lambda ts: datetime.fromtimestamp(ts, tz).strftime("%H:%M")
         return {"day": day.isoformat(), "kind": kind(day, hols), "from": src,
                 "sunrise": fmt(at(day, sun[0], tz)), "sunset": fmt(at(day, sun[1], tz)),
-                "learned_days": len(self.library.days()),
+                "learned_days": len(self.library.days()), "tv": self.tv_enabled,
                 "actions": [{"at": fmt(a.ts), "light": a.light, "on": a.on, "brightness": a.brightness} for a in actions]}
+
+    @property
+    def tv_enabled(self) -> bool:
+        """The TV switch: whether the TV is replayed too (on unless switched off)."""
+        return self.library.db.get_setting("presence_tv", "on") == "on"
+
+    async def set_tv(self, on: bool) -> None:
+        self.library.db.set_setting("presence_tv", "on" if on else "off")
+        tv = self.pc.tv
+        if not on and tv and self.ours.get(tv) and tv not in self.manual and await self._state(tv):
+            await self._turn(tv, False)   # switched off while we have it on: off it goes
+        if tv:
+            self.ours.pop(tv, None)
+        for cb in self.on_tv:
+            await cb(on)
 
     async def _state(self, light: str) -> bool | None:
         r = await self.http.get(f"/api/states/{light}")
-        return r.json().get("state") == "on" if r.status_code == 200 else None
+        return is_on(light, r.json().get("state", "unknown")) if r.status_code == 200 else None
+
+    async def _turn(self, entity: str, on: bool, brightness: int | None = None) -> None:
+        if entity.startswith("media_player."):
+            if not on:
+                await self.http.post("/api/services/media_player/turn_off", json={"entity_id": entity})
+                return
+            if self.pc.tv_remote:
+                await self.http.post("/api/services/remote/turn_on", json={"entity_id": self.pc.tv_remote})
+                await asyncio.sleep(5)   # let it (and the TV set) wake before opening the channel
+            if self.pc.tv_url:
+                await self.http.post("/api/services/media_player/play_media", json={
+                    "entity_id": entity, "media_content_type": "url", "media_content_id": self.pc.tv_url})
+            elif not self.pc.tv_remote:
+                await self.http.post("/api/services/media_player/turn_on", json={"entity_id": entity})
+            return
+        data = {"entity_id": entity} | ({"brightness_pct": brightness} if on and brightness else {})
+        await self.http.post(f"/api/services/light/{'turn_on' if on else 'turn_off'}", json=data)
 
     async def _switch(self, light: str, on: bool, brightness: int | None = None) -> None:
-        if light in self.manual:
+        if light in self.manual or (light == self.pc.tv and not self.tv_enabled):
             return
         now_on = await self._state(light)
         if light in self.ours and now_on is not None and now_on != self.ours[light]:
@@ -358,14 +414,13 @@ class PresenceSimulator:
         if now_on == on:
             self.ours.setdefault(light, on)   # already as planned; not ours to switch off later
             return
-        data = {"entity_id": light} | ({"brightness_pct": brightness} if on and brightness else {})
-        await self.http.post(f"/api/services/light/{'turn_on' if on else 'turn_off'}", json=data)
+        await self._turn(light, on, brightness)
         self.ours[light] = on
 
     async def _stop(self) -> None:
         for light, on in list(self.ours.items()):
             if on and light not in self.manual and await self._state(light):
-                await self.http.post("/api/services/light/turn_off", json={"entity_id": light})
+                await self._turn(light, False)
         self.ours.clear()
         self.manual.clear()
 
@@ -377,7 +432,7 @@ class PresenceSimulator:
     async def record(self) -> None:
         """Keep the presence lights' changes (with brightness) as they happen."""
         url = self.cfg.ha.url.replace("http", "ws", 1).rstrip("/") + "/api/websocket"
-        wanted = set(self.pc.lights)
+        wanted = set(self.pc.entities)
         while True:
             try:
                 async with websockets.connect(url, max_size=None) as ws:
@@ -391,12 +446,12 @@ class PresenceSimulator:
                         msg = json.loads(raw)
                         data = msg.get("event", {}).get("data", {}) if msg.get("type") == "event" else {}
                         new = data.get("new_state")
-                        if data.get("entity_id") in wanted and new and new["state"] in ("on", "off"):
+                        eid = data.get("entity_id")
+                        if eid in wanted and new and (on := is_on(eid, new["state"])) is not None:
                             old = data.get("old_state") or {}
                             pct = _pct(new["attributes"].get("brightness"))
-                            if old.get("state") != new["state"] or _pct((old.get("attributes") or {}).get("brightness")) != pct:
-                                self.library.record(datetime.fromisoformat(new["last_updated"]).timestamp(),
-                                                    data["entity_id"], new["state"] == "on", pct)
+                            if is_on(eid, old.get("state", "unknown")) != on or _pct((old.get("attributes") or {}).get("brightness")) != pct:
+                                self.library.record(datetime.fromisoformat(new["last_updated"]).timestamp(), eid, on, pct)
             except (OSError, websockets.WebSocketException) as e:
                 log.warning("presence recording: Home Assistant connection lost (%s); retrying", e)
             await asyncio.sleep(10)

@@ -563,6 +563,9 @@ const SECTIONS = [
     ["presence.bedtime", "Bedtime (stays at clock time)", "text", "23:00"],
     ["presence.max_on_hours", "Longest a light stays on (h)", "number", 4],
     ["presence.extra_holidays", "Extra holidays (MM-DD)", "list", [], "treated like public holidays (latest Sunday), e.g. 12-24, 12-31"],
+    ["presence.tv", "TV", "text", "", "a media player replayed like a light, e.g. media_player.apple_tv"],
+    ["presence.tv_remote", "TV remote", "text", "", "wakes it (and the TV set over HDMI-CEC), e.g. remote.apple_tv"],
+    ["presence.tv_url", "TV channel link", "text", "", "opened once the TV is on, e.g. a deep link to DR1 live", null, true],
   ]},
   {title: "Lights on people after dark", desc: "Each camera's \"Lights on a person after dark\" go to full brightness while a person is there after dark, and return to exactly how they were afterwards.", fields: [
     ["person_lights.enabled", "Enabled", "bool", true],
@@ -790,6 +793,20 @@ function renderSettings() {
             + b.actions.map(a => `${a.at}  ${a.on ? "on " : "off"}  ${a.light}${a.brightness ? ` (${a.brightness}%)` : ""}`).join("\n");
       };
       card.appendChild(row); card.appendChild(out);
+      fetch("api/presence/tv").then(r => r.ok ? r.json() : null).then(b => {
+        if (!b) return;   // no TV set up
+        const tv = document.createElement("div");
+        tv.className = "row";
+        tv.innerHTML = `<div class="away" role="switch" tabindex="0" aria-checked="${b.tv}"><span>Include the TV</span><span class="switch"></span></div><small class="muted">Also switch.smartcam_presence_tv in Home Assistant; takes effect at once.</small>`;
+        const sw = tv.querySelector("[role=switch]");
+        const toggle = async () => {
+          const r = await fetch("api/presence/tv", json("PUT", {tv: sw.getAttribute("aria-checked") !== "true"}));
+          if (r.ok) sw.setAttribute("aria-checked", (await r.json()).tv);
+        };
+        sw.onclick = toggle;
+        sw.onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggle(); } };
+        card.insertBefore(tv, row);
+      });
     }
     if (s.test) {
       const row = document.createElement("div");
