@@ -18,7 +18,8 @@ the lights the simulation switched on are switched off.
 
 The TV (`tv`, a media player such as an Apple TV) is learned and replayed the same way, as one more
 light: on is anything but off or standby. It is woken with `tv_remote` (the TV set follows over
-HDMI-CEC) and `tv_url` is opened, e.g. a deep link to a live channel. The TV switch
+HDMI-CEC) and then plays DR's live channel `tv_dr_channel` (looked up fresh each time and streamed over
+AirPlay), or opens `tv_url` (an app or a link; a .m3u8 is streamed). The TV switch
 (switch.smartcam_presence_tv, on by default) leaves it out of the replay without forgetting it.
 """
 
@@ -29,6 +30,7 @@ import websockets
 import math
 import random
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -59,7 +61,8 @@ class PresenceConfig(BaseModel):
     extra_holidays: list[str] = []      # more days treated like holidays, as MM-DD (e.g. 12-24, 12-31)
     tv: str | None = None               # a media player replayed like a light, e.g. media_player.apple_tv
     tv_remote: str | None = None        # wakes it (and the TV set over HDMI-CEC), e.g. remote.apple_tv
-    tv_url: str | None = None           # opened once it is on, e.g. a deep link to DR1 live
+    tv_dr_channel: int | None = None    # DR live channel streamed once it is on (DR1 20875, DR2 20876)
+    tv_url: str | None = None           # otherwise opened once it is on: an app id, a link, or a .m3u8 stream
 
     @property
     def entities(self) -> list[str]:
@@ -280,6 +283,26 @@ def plan(day: date, library: list[dict], pc: PresenceConfig, sun: tuple[float, f
     return src["day"], sorted(actions, key=lambda x: x.ts)
 
 
+# --- DR live TV -------------------------------------------------------------------------------------
+
+DR_API = "https://production.dr-massive.com/api"
+
+
+async def dr_live_stream(channel: int) -> str:
+    """The HLS URL of a DR live channel, as the DRTV website finds it: an anonymous token, then the
+    channel's live streams."""
+    params = {"device": "web_browser", "ff": "idp,ldp,rpt", "lang": "da", "supportFallbackToken": "true"}
+    async with httpx.AsyncClient(timeout=20) as http:
+        r = await http.post(f"{DR_API}/authorization/anonymous-sso", params=params,
+                            json={"deviceId": str(uuid.uuid4()), "scopes": ["Catalog"], "optout": False})
+        r.raise_for_status()
+        token = next(t["value"] for t in r.json() if t.get("type") == "UserProfile")
+        r = await http.get(f"{DR_API}/channels/{int(channel)}/liveStreams", headers={"X-Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        links = {s["type"]: s["link"] for s in r.json()}
+    return links.get("hlsURL") or links["hlsURLEu"]
+
+
 # --- running ----------------------------------------------------------------------------------------
 
 class PresenceSimulator:
@@ -394,9 +417,16 @@ class PresenceSimulator:
             if self.pc.tv_remote:
                 await self.http.post("/api/services/remote/turn_on", json={"entity_id": self.pc.tv_remote})
                 await asyncio.sleep(5)   # let it (and the TV set) wake before opening the channel
-            if self.pc.tv_url:
+            url = self.pc.tv_url
+            if self.pc.tv_dr_channel:
+                try:
+                    url = await dr_live_stream(self.pc.tv_dr_channel)
+                except (httpx.HTTPError, KeyError, ValueError, StopIteration) as e:
+                    log.warning("presence: DR channel %s not found (%s)", self.pc.tv_dr_channel, e)
+            if url:
+                stream = url.split("?")[0].endswith(".m3u8")
                 await self.http.post("/api/services/media_player/play_media", json={
-                    "entity_id": entity, "media_content_type": "url", "media_content_id": self.pc.tv_url})
+                    "entity_id": entity, "media_content_type": "video" if stream else "url", "media_content_id": url})
             elif not self.pc.tv_remote:
                 await self.http.post("/api/services/media_player/turn_on", json={"entity_id": entity})
             return

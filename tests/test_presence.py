@@ -176,3 +176,22 @@ def test_tv_switch_is_on_by_default_kept_and_turns_our_tv_off(monkeypatch):
         assert sim.http.calls == []
         assert not presence.PresenceSimulator(sim.cfg, db, alarm=None).tv_enabled   # survives a restart
     asyncio.run(go())
+
+
+def test_dr_channel_is_looked_up_and_streamed(monkeypatch):
+    import asyncio
+    import smartcam.presence as presence
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(presence.asyncio, "sleep", lambda s: real_sleep(0))
+    async def fake_stream(channel):
+        assert channel == 20875
+        return "https://dr.invalid/dr1/master.m3u8"
+    monkeypatch.setattr(presence, "dr_live_stream", fake_stream)
+    async def go():
+        sim, _ = simulator({"media_player.tv": "off"})
+        sim.pc.tv_dr_channel = 20875
+        await sim._switch("media_player.tv", True)
+        play = sim.http.calls[-1]
+        assert play[0] == "media_player.play_media"
+        assert play[1]["media_content_type"] == "video" and play[1]["media_content_id"].endswith("master.m3u8")
+    asyncio.run(go())
