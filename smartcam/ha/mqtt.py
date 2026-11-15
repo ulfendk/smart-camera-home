@@ -4,6 +4,7 @@ Entities:
 - switch.smartcam_away                  away mode (also settable from the smartcam UI)
 - sensor.smartcam_alarm_incident         the latest alarm (intrusion or smoke): open, confirmed or false_alarm
 - switch.smartcam_wfh                   working from home: every person outside is pushed
+- switch.smartcam_presence_tv           the presence simulation replays the TV too (with presence.tv set)
 - binary_sensor.smartcam_<camera>_person on while a confirmed person event is open on that camera
 - camera.smartcam_<camera>_snapshot     latest event snapshot; notifications use it as their image,
                                         so it loads through HA even when the phone is not at home
@@ -48,6 +49,11 @@ def discovery_messages(cfg: Config) -> list[tuple[str, dict]]:
         msgs.append((f"{d}/camera/smartcam/{name}_snapshot/config", {
             "name": f"{name} snapshot", "unique_id": f"smartcam_{name}_snapshot",
             "default_entity_id": f"camera.smartcam_{name}_snapshot", "topic": f"{p}/{name}/snapshot", "device": device, **avail}))
+    if cfg.presence.get("tv"):
+        msgs.append((f"{d}/switch/smartcam/presence_tv/config", {
+            "name": "Presence TV", "unique_id": "smartcam_presence_tv", "default_entity_id": "switch.smartcam_presence_tv",
+            "icon": "mdi:television", "state_topic": f"{p}/presence_tv/state", "command_topic": f"{p}/presence_tv/set",
+            "device": device, **avail}))
     msgs.append((f"{d}/alarm_control_panel/smartcam/alarm/config", {
         "name": "Alarm", "unique_id": "smartcam_alarm", "default_entity_id": "alarm_control_panel.smartcam_alarm",
         "state_topic": f"{p}/alarm/state", "command_topic": f"{p}/alarm/set", "supported_features": ["arm_away", "arm_home"],
@@ -79,6 +85,7 @@ class HaMqtt:
     def __init__(self, cfg: Config, engine: EventEngine, alarm=None):
         self.cfg, self.engine, self.alarm = cfg, engine, alarm
         self.client: aiomqtt.Client | None = None
+        self.presence = None
         self.open_events: dict[str, set[int]] = {name: set() for name in cfg.cameras}
         engine.on_open.append(self._event_open)
         engine.on_close.append(self._event_close)
@@ -93,6 +100,11 @@ class HaMqtt:
             alarm.on_state.append(self._publish_alarm)
             alarm.on_trigger.insert(0, lambda incident, event: self._publish_incident(incident))
             alarm.on_response.insert(0, self._publish_incident)
+
+    def attach_presence(self, presence) -> None:
+        """The presence simulator, created after this, for the TV switch."""
+        self.presence = presence
+        presence.on_tv.append(self._publish_presence_tv)
 
     async def run(self) -> None:
         m, p = self.cfg.mqtt, self.cfg.mqtt.topic_prefix
@@ -112,6 +124,9 @@ class HaMqtt:
                         await client.publish(f"{p}/{name}/occupied", "OFF", retain=True)
                     await client.subscribe(f"{p}/away/set")
                     await client.subscribe(f"{p}/wfh/set")
+                    if self.presence is not None and self.presence.pc.tv:
+                        await self._publish_presence_tv(self.presence.tv_enabled)
+                        await client.subscribe(f"{p}/presence_tv/set")
                     if self.alarm is not None:
                         await self._publish_alarm(self.alarm.state)
                         if self.alarm.incident:
@@ -124,6 +139,8 @@ class HaMqtt:
                             await self.alarm.command(payload)
                         elif msg.topic.matches(f"{p}/wfh/set"):
                             await self.engine.set_wfh(payload.upper() == "ON")
+                        elif msg.topic.matches(f"{p}/presence_tv/set") and self.presence is not None:
+                            await self.presence.set_tv(payload.upper() == "ON")
                         elif msg.topic.matches(f"{p}/away/set"):
                             await self.engine.set_away(payload.upper() == "ON")
             except aiomqtt.MqttError as e:
@@ -159,6 +176,9 @@ class HaMqtt:
 
     async def _publish_wfh(self, on: bool) -> None:
         await self._publish("wfh/state", "ON" if on else "OFF")
+
+    async def _publish_presence_tv(self, on: bool) -> None:
+        await self._publish("presence_tv/state", "ON" if on else "OFF")
 
     async def _event_open(self, event: dict) -> None:
         self.open_events[event["camera"]].add(event["id"])

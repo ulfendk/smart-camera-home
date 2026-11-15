@@ -63,6 +63,8 @@ async def main() -> None:
     pc = PresenceConfig(**cfg.presence)
     if cfg.ha.enabled and alarm is not None and (pc.enabled or pc.lights):   # lights alone: learn and preview only
         presence = PresenceSimulator(cfg, db, alarm)
+        if cfg.mqtt.enabled:
+            mqtt.attach_presence(presence)
     watchdog = None
     from .power import PowerWatchdog
     if (wd := PowerWatchdog(cfg)).last_frame:   # any camera it can restart
