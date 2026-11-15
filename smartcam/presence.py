@@ -21,7 +21,7 @@ is anything but off or standby. It is woken through `tv_remote` (e.g. an Apple T
 over HDMI-CEC), then the webOS app `tv_app` is opened fresh and `tv_keys` are pressed, the way you would
 start a live channel by hand (DRTV: right to the live tab, OK, OK for DR1). App links are no use here:
 an Apple TV asks before opening one, and nobody is home to answer. The TV switch
-(switch.smartcam_presence_tv, on by default) leaves it out of the replay without forgetting it.
+(TV at the top of the UI, switch.smartcam_presence_tv; on by default) leaves it out of the replay without forgetting it.
 """
 
 import asyncio
