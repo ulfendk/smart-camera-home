@@ -26,6 +26,7 @@
   nav button[aria-pressed="true"] { color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
   .away { margin-left: auto; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: var(--muted); font-weight: 500; }
   .away + .away { margin-left: 0; }
+  .away[hidden] { display: none; }
   .alarm { font: inherit; font-weight: 500; padding: 6px 14px; border-radius: 16px; border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; }
   .alarm[data-state="armed_away"], .alarm[data-state="arming"] { color: #fff; background: var(--primary); border-color: var(--primary); }
   .alarm[data-state="pending"] { color: #fff; background: var(--warn); border-color: var(--warn); }
@@ -149,6 +150,7 @@
     <button id="tab-events" aria-pressed="false">Events</button>
     <button id="tab-settings" aria-pressed="false">Settings</button>
   </nav>
+  <div class="away" id="tv" role="switch" aria-checked="false" tabindex="0" hidden title="Presence simulation: switch the TV on in the evenings too while armed away"><span>TV</span><span class="switch"></span></div>
   <div class="away" id="wfh" role="switch" aria-checked="false" tabindex="0" title="Working from home: push every person outside, day and night"><span>WFH</span><span class="switch"></span></div>
   <div class="away" id="away" role="switch" aria-checked="false" tabindex="0"><span id="away-label">Home</span><span class="switch"></span></div>
   <span style="position:relative"><button class="alarm" id="alarm" hidden title="Arm or disarm the alarm">Alarm off</button>
@@ -204,6 +206,9 @@ async function loadAway() {
   $("away-label").textContent = away ? "Away" : "Home";
   const {wfh} = await (await fetch("api/wfh")).json();
   $("wfh").setAttribute("aria-checked", wfh);
+  const tv = await fetch("api/presence/tv");   // 404 without a TV in the presence simulation
+  $("tv").hidden = !tv.ok;
+  if (tv.ok) $("tv").setAttribute("aria-checked", (await tv.json()).tv);
 }
 async function toggleAway() {
   await fetch("api/away", json("PUT", {away: $("away").getAttribute("aria-checked") !== "true"}));
@@ -217,6 +222,12 @@ async function toggleWfh() {
 }
 $("wfh").onclick = toggleWfh;
 $("wfh").onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleWfh(); } };
+async function toggleTv() {
+  await fetch("api/presence/tv", json("PUT", {tv: $("tv").getAttribute("aria-checked") !== "true"}));
+  loadAway();
+}
+$("tv").onclick = toggleTv;
+$("tv").onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleTv(); } };
 
 // --- alarm -----------------------------------------------------------------------------------------
 const ALARM_LABEL = {disarmed: "Alarm off", arming: "Arming…", armed_away: "Armed away", armed_home: "Armed home", pending: "Disarm now!", triggered: "ALARM"};
@@ -797,20 +808,6 @@ function renderSettings() {
             + b.actions.map(a => `${a.at}  ${a.on ? "on " : "off"}  ${a.light}${a.brightness ? ` (${a.brightness}%)` : ""}`).join("\n");
       };
       card.appendChild(row); card.appendChild(out);
-      fetch("api/presence/tv").then(r => r.ok ? r.json() : null).then(b => {
-        if (!b) return;   // no TV set up
-        const tv = document.createElement("div");
-        tv.className = "row";
-        tv.innerHTML = `<div class="away" role="switch" tabindex="0" aria-checked="${b.tv}"><span>Include the TV</span><span class="switch"></span></div><small class="muted">Also switch.smartcam_presence_tv in Home Assistant; takes effect at once.</small>`;
-        const sw = tv.querySelector("[role=switch]");
-        const toggle = async () => {
-          const r = await fetch("api/presence/tv", json("PUT", {tv: sw.getAttribute("aria-checked") !== "true"}));
-          if (r.ok) sw.setAttribute("aria-checked", (await r.json()).tv);
-        };
-        sw.onclick = toggle;
-        sw.onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggle(); } };
-        card.insertBefore(tv, row);
-      });
     }
     if (s.test) {
       const row = document.createElement("div");
