@@ -181,3 +181,13 @@ def test_tv_switch_is_on_by_default_kept_and_turns_our_tv_off(monkeypatch):
         assert not presence.PresenceSimulator(sim.cfg, db, alarm=None).tv_enabled   # survives a restart
     asyncio.run(go())
 
+
+
+def test_tv_is_only_replayed_in_its_evening_window():
+    pc = PresenceConfig(tv="media_player.tv", jitter_minutes=0, light_jitter_minutes=0)
+    sun = (7.5 * 3600, 17.2 * 3600)
+    lib = [{"day": "2026-10-13", "weekend": False, "sun": sun,
+            "lights": {"media_player.tv": [(3.5 * 3600, 5 * 3600), (17 * 3600, 20 * 3600), (22 * 3600, 23.5 * 3600)]}}]
+    _, actions = plan(date(2026, 10, 27), lib, pc, sun, CPH, random.Random(1))
+    fmt = lambda a: (datetime.fromtimestamp(a.ts, CPH).strftime("%H:%M"), a.on)
+    assert [fmt(a) for a in actions] == [("18:00", True), ("20:00", False), ("22:00", True), ("23:00", False)]
