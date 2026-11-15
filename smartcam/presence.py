@@ -64,6 +64,8 @@ class PresenceConfig(BaseModel):
     tv_app: str | None = None           # webOS app opened fresh once it is on, e.g. dk.dr.drtv.webos2 (DRTV)
     tv_keys: list[str] = []             # remote buttons pressed once the app has loaded, e.g. [RIGHT, ENTER, ENTER]
     tv_app_seconds: float = 25          # how long the app takes to load
+    tv_from: str = "18:00"              # the TV is only replayed between these (it also wakes itself at night)
+    tv_until: str = "23:00"
 
     @property
     def entities(self) -> list[str]:
@@ -276,6 +278,8 @@ def plan(day: date, library: list[dict], pc: PresenceConfig, sun: tuple[float, f
             s, e, level = span[0], span[1], span[2] if len(span) > 2 else None
             a = warp(s, src["sun"], sun, bedtime) + shift + rng.uniform(-1, 1) * pc.light_jitter_minutes * 60
             b = warp(e, src["sun"], sun, bedtime) + shift + rng.uniform(-1, 1) * pc.light_jitter_minutes * 60
+            if light == pc.tv:   # only in the evening (the TV also wakes itself at night)
+                a, b = max(a, _clock(pc.tv_from)), min(b, _clock(pc.tv_until))
             if b <= a:
                 continue
             if a >= sun[0] + margin and b <= sun[1] - margin:

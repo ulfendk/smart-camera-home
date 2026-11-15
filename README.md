@@ -172,7 +172,8 @@ included, also remotely. See [smartcam_proxy/DOCS.md](smartcam_proxy/DOCS.md).
   are left alone; on disarm only its own lights are switched off. Settings → Presence simulation previews
   today's plan. With `presence.tv` (an LG webOS TV) the TV is learned and replayed too: woken through
   `presence.tv_remote` (e.g. the Apple TV, over HDMI-CEC), then the webOS app `presence.tv_app` is opened fresh and
-  `presence.tv_keys` pressed (DRTV: RIGHT, ENTER, ENTER starts DR1 live);
+  `presence.tv_keys` pressed (DRTV: RIGHT, ENTER, ENTER starts DR1 live), only between `tv_from` and `tv_until`
+  (18:00-23:00);
   `switch.smartcam_presence_tv` (on by default) leaves it out.
 - Working from home: `switch.smartcam_wfh` in Home Assistant (or WFH at the top of the UI) pushes every person an
   outdoor camera sees, day or night, whatever the score; person masks keep the street out. Only people arriving
