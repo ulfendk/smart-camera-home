@@ -117,8 +117,8 @@ class FakeHa:
     async def post(self, path, json):
         domain, service = path.split("/")[-2:]
         self.calls.append((f"{domain}.{service}", json))
-        if service == "play_media" or (domain == "remote" and service == "turn_on"):
-            self.states["media_player.tv"] = "playing"
+        if domain == "remote" and service == "turn_on":
+            self.states["media_player.tv"] = "on"      # the TV set follows over HDMI-CEC
         elif service == "turn_off":
             self.states[json["entity_id"]] = "off"
 
@@ -129,7 +129,7 @@ def simulator(states):
     from smartcam.db import Database
     from smartcam.presence import PresenceSimulator
     cfg = type("C", (), {"presence": {"lights": ["light.x"], "tv": "media_player.tv", "tv_remote": "remote.tv",
-                                      "tv_url": "https://example.invalid/dr1"},
+                                      "tv_app": "dk.dr.drtv.webos2", "tv_keys": ["RIGHT", "ENTER", "ENTER"]},
                          "ha": type("H", (), {"url": "http://ha", "token": "t"})()})()
     db = Database(Path(tempfile.mkdtemp()) / "t.db")
     sim = PresenceSimulator(cfg, db, alarm=None)
@@ -137,7 +137,7 @@ def simulator(states):
     return sim, db
 
 
-def test_tv_is_woken_and_opened_on_the_channel_then_switched_off(monkeypatch):
+def test_tv_is_woken_and_the_app_reopened_and_driven_then_switched_off(monkeypatch):
     import asyncio
     import smartcam.presence as presence
     real_sleep = asyncio.sleep
@@ -145,12 +145,16 @@ def test_tv_is_woken_and_opened_on_the_channel_then_switched_off(monkeypatch):
     async def go():
         sim, _ = simulator({"media_player.tv": "off"})
         await sim._switch("media_player.tv", True)
-        assert [c[0] for c in sim.http.calls] == ["remote.turn_on", "media_player.play_media"]
-        assert sim.http.calls[1][1]["media_content_id"] == "https://example.invalid/dr1"
+        calls = sim.http.calls
+        assert [c[0] for c in calls] == ["remote.turn_on", "webostv.command", "webostv.command"] + ["webostv.button"] * 3
+        assert [c[1]["command"] for c in calls[1:3]] == ["system.launcher/close", "system.launcher/launch"]
+        assert calls[2][1]["payload"] == {"id": "dk.dr.drtv.webos2"}
+        assert [c[1]["button"] for c in calls[3:]] == ["RIGHT", "ENTER", "ENTER"]
         await sim._stop()
-        assert sim.http.calls[-1] == ("media_player.turn_off", {"entity_id": "media_player.tv"})
+        assert sim.http.calls[-2:] == [("media_player.turn_off", {"entity_id": "media_player.tv"}),
+                                       ("remote.turn_off", {"entity_id": "remote.tv"})]
         sim.http.calls.clear()
-        sim.http.states["media_player.tv"] = "playing"      # already on: nothing to do
+        sim.http.states["media_player.tv"] = "on"           # already on: nothing to do
         await sim._switch("media_player.tv", True)
         assert sim.http.calls == []
     asyncio.run(go())
@@ -177,21 +181,3 @@ def test_tv_switch_is_on_by_default_kept_and_turns_our_tv_off(monkeypatch):
         assert not presence.PresenceSimulator(sim.cfg, db, alarm=None).tv_enabled   # survives a restart
     asyncio.run(go())
 
-
-def test_dr_channel_is_looked_up_and_streamed(monkeypatch):
-    import asyncio
-    import smartcam.presence as presence
-    real_sleep = asyncio.sleep
-    monkeypatch.setattr(presence.asyncio, "sleep", lambda s: real_sleep(0))
-    async def fake_stream(channel):
-        assert channel == 20875
-        return "https://dr.invalid/dr1/master.m3u8"
-    monkeypatch.setattr(presence, "dr_live_stream", fake_stream)
-    async def go():
-        sim, _ = simulator({"media_player.tv": "off"})
-        sim.pc.tv_dr_channel = 20875
-        await sim._switch("media_player.tv", True)
-        play = sim.http.calls[-1]
-        assert play[0] == "media_player.play_media"
-        assert play[1]["media_content_type"] == "video" and play[1]["media_content_id"].endswith("master.m3u8")
-    asyncio.run(go())

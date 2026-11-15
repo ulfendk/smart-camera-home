@@ -16,10 +16,11 @@ moves smoothly; lights that came on 20 minutes after dusk three weeks ago come o
 today's dusk. A light someone switches by hand is left alone for the rest of the day; on disarm only
 the lights the simulation switched on are switched off.
 
-The TV (`tv`, a media player such as an Apple TV) is learned and replayed the same way, as one more
-light: on is anything but off or standby. It is woken with `tv_remote` (the TV set follows over
-HDMI-CEC) and then plays DR's live channel `tv_dr_channel` (looked up fresh each time and streamed over
-AirPlay), or opens `tv_url` (an app or a link; a .m3u8 is streamed). The TV switch
+The TV (`tv`, an LG webOS media player) is learned and replayed the same way, as one more light: on
+is anything but off or standby. It is woken through `tv_remote` (e.g. an Apple TV; the TV set follows
+over HDMI-CEC), then the webOS app `tv_app` is opened fresh and `tv_keys` are pressed, the way you would
+start a live channel by hand (DRTV: right to the live tab, OK, OK for DR1). App links are no use here:
+an Apple TV asks before opening one, and nobody is home to answer. The TV switch
 (switch.smartcam_presence_tv, on by default) leaves it out of the replay without forgetting it.
 """
 
@@ -30,7 +31,6 @@ import websockets
 import math
 import random
 import time
-import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -59,10 +59,11 @@ class PresenceConfig(BaseModel):
     daylight_margin_minutes: float = 30 # intervals entirely in daylight (this far from sunrise/sunset) are skipped
     holidays_country: str | None = None # public holidays count as Sundays; default: Home Assistant's country
     extra_holidays: list[str] = []      # more days treated like holidays, as MM-DD (e.g. 12-24, 12-31)
-    tv: str | None = None               # a media player replayed like a light, e.g. media_player.apple_tv
-    tv_remote: str | None = None        # wakes it (and the TV set over HDMI-CEC), e.g. remote.apple_tv
-    tv_dr_channel: int | None = None    # DR live channel streamed once it is on (DR1 20875, DR2 20876)
-    tv_url: str | None = None           # otherwise opened once it is on: an app id, a link, or a .m3u8 stream
+    tv: str | None = None               # an LG webOS TV replayed like a light, e.g. media_player.lg_webos_smart_tv
+    tv_remote: str | None = None        # wakes it, e.g. remote.apple_tv (the TV set follows over HDMI-CEC)
+    tv_app: str | None = None           # webOS app opened fresh once it is on, e.g. dk.dr.drtv.webos2 (DRTV)
+    tv_keys: list[str] = []             # remote buttons pressed once the app has loaded, e.g. [RIGHT, ENTER, ENTER]
+    tv_app_seconds: float = 25          # how long the app takes to load
 
     @property
     def entities(self) -> list[str]:
@@ -283,26 +284,6 @@ def plan(day: date, library: list[dict], pc: PresenceConfig, sun: tuple[float, f
     return src["day"], sorted(actions, key=lambda x: x.ts)
 
 
-# --- DR live TV -------------------------------------------------------------------------------------
-
-DR_API = "https://production.dr-massive.com/api"
-
-
-async def dr_live_stream(channel: int) -> str:
-    """The HLS URL of a DR live channel, as the DRTV website finds it: an anonymous token, then the
-    channel's live streams."""
-    params = {"device": "web_browser", "ff": "idp,ldp,rpt", "lang": "da", "supportFallbackToken": "true"}
-    async with httpx.AsyncClient(timeout=20) as http:
-        r = await http.post(f"{DR_API}/authorization/anonymous-sso", params=params,
-                            json={"deviceId": str(uuid.uuid4()), "scopes": ["Catalog"], "optout": False})
-        r.raise_for_status()
-        token = next(t["value"] for t in r.json() if t.get("type") == "UserProfile")
-        r = await http.get(f"{DR_API}/channels/{int(channel)}/liveStreams", headers={"X-Authorization": f"Bearer {token}"})
-        r.raise_for_status()
-        links = {s["type"]: s["link"] for s in r.json()}
-    return links.get("hlsURL") or links["hlsURLEu"]
-
-
 # --- running ----------------------------------------------------------------------------------------
 
 class PresenceSimulator:
@@ -411,27 +392,37 @@ class PresenceSimulator:
 
     async def _turn(self, entity: str, on: bool, brightness: int | None = None) -> None:
         if entity.startswith("media_player."):
-            if not on:
-                await self.http.post("/api/services/media_player/turn_off", json={"entity_id": entity})
-                return
-            if self.pc.tv_remote:
-                await self.http.post("/api/services/remote/turn_on", json={"entity_id": self.pc.tv_remote})
-                await asyncio.sleep(5)   # let it (and the TV set) wake before opening the channel
-            url = self.pc.tv_url
-            if self.pc.tv_dr_channel:
-                try:
-                    url = await dr_live_stream(self.pc.tv_dr_channel)
-                except (httpx.HTTPError, KeyError, ValueError, StopIteration) as e:
-                    log.warning("presence: DR channel %s not found (%s)", self.pc.tv_dr_channel, e)
-            if url:
-                stream = url.split("?")[0].endswith(".m3u8")
-                await self.http.post("/api/services/media_player/play_media", json={
-                    "entity_id": entity, "media_content_type": "video" if stream else "url", "media_content_id": url})
-            elif not self.pc.tv_remote:
-                await self.http.post("/api/services/media_player/turn_on", json={"entity_id": entity})
+            await (self._tv_on() if on else self._tv_off())
             return
         data = {"entity_id": entity} | ({"brightness_pct": brightness} if on and brightness else {})
         await self.http.post(f"/api/services/light/{'turn_on' if on else 'turn_off'}", json=data)
+
+    async def _tv_on(self) -> None:
+        tv = self.pc.tv
+        if self.pc.tv_remote:
+            await self.http.post("/api/services/remote/turn_on", json={"entity_id": self.pc.tv_remote})
+        else:
+            await self.http.post("/api/services/media_player/turn_on", json={"entity_id": tv})
+        for _ in range(12):   # the TV set wakes over HDMI-CEC within a minute
+            if await self._state(tv):
+                break
+            await asyncio.sleep(5)
+        if not self.pc.tv_app:
+            return
+        command = lambda c, payload: self.http.post("/api/services/webostv/command",
+                                                   json={"entity_id": tv, "command": c, "payload": payload})
+        await command("system.launcher/close", {"id": self.pc.tv_app})   # fresh, so the keys land where expected
+        await asyncio.sleep(3)
+        await command("system.launcher/launch", {"id": self.pc.tv_app})
+        await asyncio.sleep(self.pc.tv_app_seconds)
+        for key in self.pc.tv_keys:
+            await self.http.post("/api/services/webostv/button", json={"entity_id": tv, "button": key})
+            await asyncio.sleep(4)
+
+    async def _tv_off(self) -> None:
+        await self.http.post("/api/services/media_player/turn_off", json={"entity_id": self.pc.tv})
+        if self.pc.tv_remote:
+            await self.http.post("/api/services/remote/turn_off", json={"entity_id": self.pc.tv_remote})
 
     async def _switch(self, light: str, on: bool, brightness: int | None = None) -> None:
         if light in self.manual or (light == self.pc.tv and not self.tv_enabled):
